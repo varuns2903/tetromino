@@ -6,6 +6,7 @@ set(TETROMINO_ENGINE_TESTS
     BoardTests
     CollisionTests
     RotationTests
+    SpinTests
     ScoringTests
     PieceGeneratorTests
     GameTests

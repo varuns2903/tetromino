@@ -91,6 +91,12 @@ private:
     Duration clearTimer_{};
     int lockResets_ = 0;
     int lowestRow_ = 0;  // deepest y reached by the current piece
+
+    // For spin detection: did the piece last move by rotating, and with
+    // which kick test?
+    bool lastActionWasRotation_ = false;
+    int lastKick_ = 0;
+    game::ScoringChain chain_;
     std::uint64_t revision_ = 0;
 };
 

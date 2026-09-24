@@ -4,10 +4,14 @@
 // Nothing in here knows about terminals.
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 
 namespace tetromino::core {
+
+// Game time. The engine only ever sees durations handed to it by the caller.
+using Duration = std::chrono::nanoseconds;
 
 // Board coordinates: x grows to the right, y grows *downwards*.
 // Row 0 is the top of the (hidden) spawn area.

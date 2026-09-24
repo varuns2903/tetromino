@@ -15,6 +15,7 @@
 #include "core/Types.hpp"
 #include "game/Board.hpp"
 #include "game/Piece.hpp"
+#include "game/Scoring.hpp"
 
 namespace tetromino::core {
 
@@ -25,8 +26,33 @@ struct Stats {
     int lines = 0;
     int level = 1;
     int pieces = 0;
+
+    // Line clears by size, and special clears.
+    int singles = 0;
+    int doubles = 0;
+    int triples = 0;
     int quads = 0;
+    int spins = 0;          // spin placements (with or without lines)
+    int perfectClears = 0;
+    int maxCombo = 0;       // longest chain of consecutive clearing pieces
 };
+
+// The most recent scoring event, so a front end can show "QUAD  +800" and
+// similar. `age` grows while the game runs; front ends typically show the
+// event for kFeedbackDuration.
+struct Feedback {
+    std::uint64_t id = 0;  // increases with every event; 0 = nothing yet
+    int lines = 0;
+    game::SpinKind spin = game::SpinKind::None;
+    int combo = 0;         // 0 = no combo bonus
+    bool backToBack = false;
+    bool perfectClear = false;
+    std::uint64_t points = 0;
+    bool levelUp = false;
+    Duration age{};
+};
+
+inline constexpr Duration kFeedbackDuration = std::chrono::milliseconds{1600};
 
 // Which features the current game has; set from the difficulty when a game
 // starts. Front ends use this to hide what's disabled.
@@ -62,6 +88,7 @@ struct GameState {
     std::array<PieceType, kPreviewCount> preview{};
 
     Stats stats;
+    Feedback feedback;
 
     // Rows being cleared right now. While non-empty the rows are still on the
     // board (so they can be animated) and no piece is active.

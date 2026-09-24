@@ -71,15 +71,23 @@ const KickTable& kicksFor(PieceType type, Rotation from, RotationDirection direc
     }
 }
 
-std::optional<Piece> tryRotate(const Board& board, const Piece& piece, RotationDirection direction) {
+std::optional<RotationResult> rotateWithKicks(const Board& board, const Piece& piece, RotationDirection direction) {
     Piece rotatedPiece = piece;
     rotatedPiece.rotation = core::rotated(piece.rotation, direction);
 
-    for (const Point kick : kicksFor(piece.type, piece.rotation, direction)) {
-        const Piece candidate = moved(rotatedPiece, kick.x, kick.y);
+    const KickTable& kicks = kicksFor(piece.type, piece.rotation, direction);
+    for (std::size_t i = 0; i < kicks.size(); ++i) {
+        const Piece candidate = moved(rotatedPiece, kicks[i].x, kicks[i].y);
         if (fits(board, candidate)) {
-            return candidate;
+            return RotationResult{candidate, static_cast<int>(i)};
         }
+    }
+    return std::nullopt;
+}
+
+std::optional<Piece> tryRotate(const Board& board, const Piece& piece, RotationDirection direction) {
+    if (const auto result = rotateWithKicks(board, piece, direction)) {
+        return result->piece;
     }
     return std::nullopt;
 }

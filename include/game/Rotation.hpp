@@ -30,6 +30,15 @@ using KickTable = std::array<core::Point, kKickTests>;
 [[nodiscard]] const KickTable& kicksFor(core::PieceType type, core::Rotation from,
                                         core::RotationDirection direction);
 
+// A successful rotation: the new piece and which kick test (0-4) it used.
+struct RotationResult {
+    Piece piece;
+    int kick = 0;
+};
+
+[[nodiscard]] std::optional<RotationResult> rotateWithKicks(const Board& board, const Piece& piece,
+                                                            core::RotationDirection direction);
+
 // The piece after rotating (with kicks), or nullopt if every test collides.
 [[nodiscard]] std::optional<Piece> tryRotate(const Board& board, const Piece& piece,
                                              core::RotationDirection direction);

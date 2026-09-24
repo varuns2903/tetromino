@@ -114,7 +114,8 @@ TEST(moving_a_grounded_piece_resets_lock_delay) {
 
 TEST(single_line_clear_scores_and_removes_row) {
     Board board;
-    fillRow(board, kBottom, 3, 6);  // gap exactly where a flat I lands
+    fillRow(board, kBottom, 3, 6);                    // gap exactly where a flat I lands
+    board.set({9, kBottom - 1}, core::CellType::Z);  // survives: no perfect-clear bonus
     Game game = gameStartingWith(PieceType::I, board);
     const int distance = game::dropDistance(game.state().board, *game.state().active);
     game.apply(Action::HardDrop);
@@ -126,7 +127,8 @@ TEST(single_line_clear_scores_and_removes_row) {
     CHECK_EQ(game.state().stats.score, 100u + static_cast<std::uint64_t>(2 * distance));
 
     finishClear(game);
-    CHECK(game.state().board.isEmpty());
+    CHECK(game.state().board.at({9, kBottom}) == core::CellType::Z);  // shifted down
+    CHECK(game.state().board.isRowEmpty(kBottom - 1));
     CHECK(game.state().active.has_value());
 }
 
@@ -135,6 +137,7 @@ TEST(quad_with_vertical_i_scores_800) {
     for (int y = kBottom - 3; y <= kBottom; ++y) {
         fillRow(board, y, 0, 0);  // well in column 0
     }
+    board.set({5, kBottom - 4}, core::CellType::Z);  // survives: no perfect-clear bonus
     Game game = gameStartingWith(PieceType::I, board);
     game.apply(Action::RotateClockwise);  // vertical, in column 5
     for (int i = 0; i < 6; ++i) {
@@ -147,7 +150,7 @@ TEST(quad_with_vertical_i_scores_800) {
     CHECK_EQ(game.state().stats.quads, 1);
     CHECK_EQ(game.state().stats.score, 800u + static_cast<std::uint64_t>(2 * distance));
     finishClear(game);
-    CHECK(game.state().board.isEmpty());
+    CHECK(game.state().board.at({5, kBottom}) == core::CellType::Z);
 }
 
 TEST(line_clear_score_uses_level) {
@@ -155,6 +158,7 @@ TEST(line_clear_score_uses_level) {
     config.startLevel = 3;
     Board board;
     fillRow(board, kBottom, 3, 6);
+    board.set({9, kBottom - 1}, core::CellType::Z);  // no perfect clear
     Game game = gameStartingWith(PieceType::I, board, config);
     CHECK_EQ(game.state().stats.level, 3);
     const int distance = game::dropDistance(game.state().board, *game.state().active);

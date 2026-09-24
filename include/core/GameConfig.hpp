@@ -8,9 +8,9 @@
 #include "game/Board.hpp"
 #include "game/Scoring.hpp"
 
-namespace tetromino::core {
+#include "core/Types.hpp"
 
-using Duration = std::chrono::nanoseconds;
+namespace tetromino::core {
 
 // Time for a piece to fall one row at a given level.
 using GravityCurve = Duration (*)(int level);

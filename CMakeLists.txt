@@ -66,6 +66,7 @@ add_library(tetromino_engine STATIC
     src/game/PieceGenerator.cpp
     src/game/Scoring.cpp
     src/game/Rotation.cpp
+    src/game/Spin.cpp
 )
 target_include_directories(tetromino_engine PUBLIC include)
 target_link_libraries(tetromino_engine PRIVATE tetromino_options)

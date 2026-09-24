@@ -6,6 +6,7 @@
 #include "game/Collision.hpp"
 #include "game/Piece.hpp"
 #include "game/Rotation.hpp"
+#include "game/Spin.hpp"
 
 namespace tetromino::core {
 
@@ -136,6 +137,11 @@ void Game::update(Duration dt) {
     if (state_.mode != GameMode::Playing) {
         return;
     }
+    // Keep feedback ("QUAD +800") ageing so front ends can fade it out.
+    if (state_.feedback.id != 0 && state_.feedback.age < kFeedbackDuration) {
+        state_.feedback.age += dt;
+        touch();
+    }
     if (state_.isClearingLines()) {
         clearTimer_ += dt;
         const double progress = static_cast<double>(clearTimer_.count()) /
@@ -172,6 +178,7 @@ void Game::updateGravity(Duration dt) {
         }
         gravityTimer_ -= interval;
         state_.active = game::moved(*state_.active, 0, 1);
+        lastActionWasRotation_ = false;
         onPieceMoved();
     }
 }
@@ -202,6 +209,8 @@ void Game::startNewGame() {
     state_.clearProgress = 0.0F;
     state_.stats = Stats{};
     state_.stats.level = scoring_.levelFor(0, config_.startLevel);
+    state_.feedback = Feedback{};
+    chain_ = game::ScoringChain{};
     state_.mode = GameMode::Playing;
     spawnFromQueue();
     touch();
@@ -238,6 +247,8 @@ bool Game::spawn(PieceType type) {
     lockTimer_ = Duration::zero();
     lockResets_ = 0;
     lowestRow_ = piece.position.y;
+    lastActionWasRotation_ = false;
+    lastKick_ = 0;
     touch();
 
     if (!game::fits(state_.board, piece)) {
@@ -252,6 +263,8 @@ bool Game::spawn(PieceType type) {
 
 void Game::lockActivePiece() {
     const Piece piece = *state_.active;
+    // Spins are judged against the board as it was before the piece landed.
+    const game::SpinKind spin = game::detectSpin(state_.board, piece, lastActionWasRotation_, lastKick_);
     bool anyVisible = false;
     for (const Point cell : game::cellsOf(piece)) {
         state_.board.set(cell, toCell(piece.type));
@@ -270,18 +283,42 @@ void Game::lockActivePiece() {
     // Line clears are resolved only here, after the piece has locked -
     // never while it's still falling.
     std::vector<int> full = state_.board.fullRows();
+    const int cleared = static_cast<int>(full.size());
+
+    bool perfectClear = false;
+    if (cleared > 0) {
+        game::Board after = state_.board;
+        after.removeRows(full);
+        perfectClear = after.isEmpty();
+    }
+
+    Stats& stats = state_.stats;
+    const int levelBefore = stats.level;
+    // Scored at the level the clear happened on.
+    const game::Award award = scoring_.award({cleared, spin, perfectClear}, stats.level, chain_);
+    stats.score += award.points;
+    stats.lines += cleared;
+    stats.level = scoring_.levelFor(stats.lines, config_.startLevel);
+    switch (cleared) {
+    case 1: ++stats.singles; break;
+    case 2: ++stats.doubles; break;
+    case 3: ++stats.triples; break;
+    case 4: ++stats.quads; break;
+    default: break;
+    }
+    stats.spins += spin != game::SpinKind::None ? 1 : 0;
+    stats.perfectClears += perfectClear ? 1 : 0;
+    stats.maxCombo = std::max(stats.maxCombo, award.combo);
+
+    if (cleared > 0 || spin != game::SpinKind::None) {
+        Feedback& f = state_.feedback;
+        f = Feedback{f.id + 1, cleared, spin, award.combo, award.backToBack, perfectClear, award.points,
+                     stats.level > levelBefore, Duration::zero()};
+    }
+
     if (full.empty()) {
         spawnFromQueue();
         return;
-    }
-
-    const int cleared = static_cast<int>(full.size());
-    Stats& stats = state_.stats;
-    stats.score += scoring_.lineClear(cleared, stats.level);  // scored at the level it happened on
-    stats.lines += cleared;
-    stats.level = scoring_.levelFor(stats.lines, config_.startLevel);
-    if (cleared == 4) {
-        ++stats.quads;
     }
 
     // Keep the rows on the board for a moment so the front end can animate
@@ -325,6 +362,7 @@ bool Game::tryShift(int dx) {
         return false;
     }
     state_.active = game::moved(*state_.active, dx, 0);
+    lastActionWasRotation_ = false;
     onPieceMoved();
     return true;
 }
@@ -334,6 +372,7 @@ bool Game::trySoftDrop() {
         return false;
     }
     state_.active = game::moved(*state_.active, 0, 1);
+    lastActionWasRotation_ = false;
     state_.stats.score += scoring_.softDrop(1);
     gravityTimer_ = Duration::zero();
     onPieceMoved();
@@ -343,16 +382,21 @@ bool Game::trySoftDrop() {
 void Game::hardDrop() {
     const int distance = game::dropDistance(state_.board, *state_.active);
     state_.active = game::moved(*state_.active, 0, distance);
+    if (distance > 0) {
+        lastActionWasRotation_ = false;  // it fell after the rotation
+    }
     state_.stats.score += scoring_.hardDrop(distance);
     lockActivePiece();
 }
 
 bool Game::tryRotate(RotationDirection direction) {
-    const auto result = game::tryRotate(state_.board, *state_.active, direction);
+    const auto result = game::rotateWithKicks(state_.board, *state_.active, direction);
     if (!result) {
         return false;
     }
-    state_.active = *result;
+    state_.active = result->piece;
+    lastActionWasRotation_ = true;
+    lastKick_ = result->kick;
     onPieceMoved();
     return true;
 }
