@@ -5,7 +5,7 @@
 namespace tetromino::core {
 
 std::optional<game::Piece> GameState::ghost() const {
-    if (!active) {
+    if (!active || !rules.ghostEnabled) {
         return std::nullopt;
     }
     return game::droppedPiece(board, *active);

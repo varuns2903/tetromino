@@ -111,7 +111,13 @@ TEST(keymap_playing) {
 
 TEST(keymap_other_modes) {
     CHECK(tui::actionFor({Key::Enter}, GameMode::StartScreen) == Action::Start);
-    CHECK(!tui::actionFor({Key::Left}, GameMode::StartScreen).has_value());
+    CHECK(tui::actionFor({Key::Left}, GameMode::StartScreen) == Action::MenuLeft);
+    CHECK(tui::actionFor({Key::Right}, GameMode::StartScreen) == Action::MenuRight);
+    CHECK(tui::actionFor({Key::Up}, GameMode::StartScreen) == Action::MenuUp);
+    CHECK(tui::actionFor({Key::Character, 's'}, GameMode::StartScreen) == Action::MenuDown);
+    CHECK(tui::actionFor({Key::Character, 'm'}, GameMode::Paused) == Action::OpenMenu);
+    CHECK(tui::actionFor({Key::Character, 'm'}, GameMode::GameOver) == Action::OpenMenu);
+    CHECK(!tui::actionFor({Key::Character, 'm'}, GameMode::Playing).has_value());
     CHECK(tui::actionFor({Key::Character, 'p'}, GameMode::Paused) == Action::Pause);
     CHECK(tui::actionFor({Key::Escape}, GameMode::Paused) == Action::Pause);
     CHECK(tui::actionFor({Key::Escape}, GameMode::StartScreen) == Action::Quit);

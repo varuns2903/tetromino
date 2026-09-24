@@ -7,6 +7,7 @@
 #include <string_view>
 
 #include "core/GameState.hpp"
+#include "core/Presets.hpp"
 #include "game/Board.hpp"
 #include "game/Piece.hpp"
 #include "tui/Ansi.hpp"
@@ -81,6 +82,11 @@ constexpr std::array<LogoLetter, 9> kLogo{{
 
 constexpr int kLogoHeight = 5;
 
+// Start screen geometry.
+constexpr int kMenuWidth = 46;
+constexpr int kMenuHeight = 11;
+constexpr TerminalSize kStartScreenMinimum{kMenuWidth + 4, kLogoHeight + 3 + 1 + kMenuHeight};
+
 // Width in pixels, including one blank pixel between letters.
 constexpr int logoPixelWidth() {
     int width = -1;
@@ -95,20 +101,41 @@ constexpr int logoPixelWidth() {
 Renderer::Renderer(Theme theme, ColorMode mode) : theme_(std::move(theme)), mode_(mode) {}
 
 void Renderer::resize(TerminalSize size) {
-    layout_ = computeLayout(size);
+    terminal_ = size;
+    layoutValid_ = false;
     back_.resize(size.columns, size.rows);
     fullRepaint_ = true;
 }
 
+const Layout& Renderer::layoutFor(const GameState& state) {
+    const BoardShape shape{state.board.width(), state.board.visibleHeight()};
+    const int previews = state.rules.previewCount;
+    if (!layoutValid_ || shape != layoutShape_ || previews != layoutPreviews_) {
+        layout_ = computeLayout(terminal_, shape, previews);
+        layoutValid_ = true;
+        layoutShape_ = shape;
+        layoutPreviews_ = previews;
+        fullRepaint_ = true;  // everything moved
+    }
+    return layout_;
+}
+
 void Renderer::render(const GameState& state) {
     back_.clear();
-    if (!layout_.fits) {
-        drawTooSmall();
+    if (state.mode == GameMode::StartScreen) {
+        if (terminal_.columns < kStartScreenMinimum.columns || terminal_.rows < kStartScreenMinimum.rows) {
+            drawTooSmall(kStartScreenMinimum);
+        } else {
+            drawStartScreen(state);
+        }
+        return;
+    }
+    if (!layoutFor(state).fits) {
+        drawTooSmall(layout_.minimum);
         return;
     }
     switch (state.mode) {
     case GameMode::StartScreen:
-        drawStartScreen(state);
         break;
     case GameMode::Playing:
     case GameMode::Quit:
@@ -144,7 +171,7 @@ bool Renderer::present(Terminal& terminal) {
 // Screens
 // ---------------------------------------------------------------------------
 
-void Renderer::drawTooSmall() {
+void Renderer::drawTooSmall(TerminalSize minimum) {
     const int w = back_.width();
     const int h = back_.height();
     NumberBuffer a{};
@@ -154,8 +181,8 @@ void Renderer::drawTooSmall() {
     drawCentred(back_, 0, w, top + 2, "Please resize to at least:", theme_.label());
 
     // "56 × 22"
-    const std::string_view cols = formatInt(a, static_cast<std::uint64_t>(layout_.minimum.columns));
-    const std::string_view rows = formatInt(b, static_cast<std::uint64_t>(layout_.minimum.rows));
+    const std::string_view cols = formatInt(a, static_cast<std::uint64_t>(minimum.columns));
+    const std::string_view rows = formatInt(b, static_cast<std::uint64_t>(minimum.rows));
     const int needW = displayWidth(cols) + 3 + displayWidth(rows);
     int x = (w - needW) / 2;
     x = back_.text(x, top + 3, cols, theme_.value());
@@ -164,8 +191,8 @@ void Renderer::drawTooSmall() {
 
     NumberBuffer c{};
     NumberBuffer d{};
-    const std::string_view curC = formatInt(c, static_cast<std::uint64_t>(layout_.terminal.columns));
-    const std::string_view curR = formatInt(d, static_cast<std::uint64_t>(layout_.terminal.rows));
+    const std::string_view curC = formatInt(c, static_cast<std::uint64_t>(terminal_.columns));
+    const std::string_view curR = formatInt(d, static_cast<std::uint64_t>(terminal_.rows));
     const int curW = 9 + displayWidth(curC) + 3 + displayWidth(curR) + 1;
     x = (w - curW) / 2;
     x = back_.text(x, top + 5, "(current ", theme_.muted());
@@ -175,15 +202,13 @@ void Renderer::drawTooSmall() {
     back_.text(x, top + 5, ")", theme_.muted());
 }
 
-void Renderer::drawStartScreen(const GameState& /*state*/) {
+void Renderer::drawStartScreen(const GameState& state) {
     const int w = back_.width();
-    constexpr int kBoxW = 36;
-    constexpr int kBoxH = 8;
-    constexpr int kTotalH = kLogoHeight + 2 + 1 + 2 + kBoxH + 2 + 1;
+    constexpr int kTotalH = kLogoHeight + 1 + 1 + 1 + kMenuHeight;
     int y = std::max(0, (back_.height() - kTotalH) / 2);
 
-    // Logo. Pixels are two columns wide
-    // (roughly square) when there's room, one column on narrow terminals.
+    // Logo. Pixels are two columns wide (roughly square) when there's room,
+    // one column on narrow terminals.
     const int pixelW = logoPixelWidth() * 2 <= w - 2 ? 2 : 1;
     int x = (w - logoPixelWidth() * pixelW) / 2;
     for (const LogoLetter& letter : kLogo) {
@@ -205,27 +230,88 @@ void Renderer::drawStartScreen(const GameState& /*state*/) {
         }
         x += (letterW + 1) * pixelW;
     }
-    y += kLogoHeight + 2;
+    y += kLogoHeight + 1;
 
     drawCentred(back_, 0, w, y, "T E R M I N A L   E D I T I O N", theme_.label());
-    y += 3;
+    y += 2;
 
-    const Rect box{(w - kBoxW) / 2, y, kBoxW, kBoxH};
+    drawSetupMenu(state, y);
+}
+
+void Renderer::drawSetupMenu(const GameState& state, int y) {
+    const core::Setup& setup = state.setup;
+    const core::BoardSize& size = core::kBoardSizes[setup.boardSize];
+    const core::Difficulty& difficulty = core::kDifficulties[setup.difficulty];
+
+    const Rect box{(back_.width() - kMenuWidth) / 2, y, kMenuWidth, kMenuHeight};
     drawPanel(back_, box, "", PanelStyle{BorderStyle::Double, theme_.overlayFrame(), theme_.heading(), true, theme_.overlay()});
-    const int ix = box.x + 9;
-    Style key = theme_.accent();
-    key.bg = theme_.overlay().bg;
-    back_.text(ix, box.y + 2, "ENTER", key);
-    back_.text(ix + 8, box.y + 2, "Start game", theme_.overlay());
-    back_.text(ix, box.y + 3, "Q", key);
-    back_.text(ix + 8, box.y + 3, "Quit", theme_.overlay());
-    Style hint = theme_.muted();
-    hint.bg = theme_.overlay().bg;
-    drawCentred(back_, box.x, box.w, box.y + 5, "hold · ghost · wall kicks", hint);
-    y += kBoxH + 2;
 
-    drawCentred(back_, 0, w, y, "←→ move   ↑ rotate   ↓ soft   space drop   c hold   p pause",
-                theme_.muted());
+    const Color bg = theme_.overlay().bg;
+    Style normal = theme_.overlay();
+    Style muted = theme_.muted();
+    muted.bg = bg;
+    Style accent = theme_.accent();
+    accent.bg = bg;
+    Style value = theme_.overlay();
+    value.bold = true;
+
+    constexpr int kLabelX = 4;
+    constexpr int kArrowLeftX = 17;
+    constexpr int kValueX = 20;
+    constexpr int kArrowRightX = 41;
+
+    // One selectable row: "› LABEL      ◂  value  ▸"
+    const auto drawRow = [&](int row, core::Setup::Field field, std::string_view label, std::size_t index,
+                             std::size_t count) {
+        const bool focused = setup.focus == field;
+        const int ry = box.y + row;
+        if (focused) {
+            back_.text(box.x + 2, ry, "›", accent);
+        }
+        back_.text(box.x + kLabelX, ry, label, focused ? accent : normal);
+        back_.text(box.x + kArrowLeftX, ry, "◂", index > 0 && focused ? accent : muted);
+        back_.text(box.x + kArrowRightX, ry, "▸", index + 1 < count && focused ? accent : muted);
+    };
+
+    // Board size: "Classic  10 × 20"
+    drawRow(2, core::Setup::Field::BoardSize, "BOARD", setup.boardSize, core::kBoardSizes.size());
+    NumberBuffer a{};
+    NumberBuffer b{};
+    int x = back_.text(box.x + kValueX, box.y + 2, size.name, value);
+    x = back_.text(x + 2, box.y + 2, formatInt(a, static_cast<std::uint64_t>(size.width)), muted);
+    x = back_.text(x, box.y + 2, " × ", muted);
+    back_.text(x, box.y + 2, formatInt(b, static_cast<std::uint64_t>(size.height)), muted);
+
+    // Difficulty, with a one-line summary of what it changes.
+    drawRow(4, core::Setup::Field::Difficulty, "DIFFICULTY", setup.difficulty, core::kDifficulties.size());
+    back_.text(box.x + kValueX, box.y + 4, difficulty.name, value);
+    drawCentred(back_, box.x, box.w, box.y + 5, difficulty.summary, muted);
+
+    // Will the chosen board fit this terminal?
+    const Layout preview = computeLayout(terminal_, BoardShape{size.width, size.height}, difficulty.previewCount);
+    if (!preview.fits) {
+        Style warn = theme_.warning();
+        warn.bg = bg;
+        NumberBuffer c{};
+        NumberBuffer d{};
+        x = back_.text(box.x + kLabelX, box.y + 7, "needs a ", warn);
+        x = back_.text(x, box.y + 7, formatInt(c, static_cast<std::uint64_t>(preview.minimum.columns)), warn);
+        x = back_.text(x, box.y + 7, " × ", warn);
+        x = back_.text(x, box.y + 7, formatInt(d, static_cast<std::uint64_t>(preview.minimum.rows)), warn);
+        back_.text(x, box.y + 7, " terminal", warn);
+    }
+
+    // Footer: key hints.
+    int fx = box.x + 3;
+    const int fy = box.y + 9;
+    fx = back_.text(fx, fy, "↑↓", accent);
+    fx = back_.text(fx + 1, fy, "choose", muted);
+    fx = back_.text(fx + 2, fy, "←→", accent);
+    fx = back_.text(fx + 1, fy, "change", muted);
+    fx = back_.text(fx + 2, fy, "ENTER", accent);
+    fx = back_.text(fx + 1, fy, "start", muted);
+    fx = back_.text(fx + 2, fy, "Q", accent);
+    back_.text(fx + 1, fy, "quit", muted);
 }
 
 void Renderer::drawPlayfield(const GameState& state) {
@@ -233,7 +319,7 @@ void Renderer::drawPlayfield(const GameState& state) {
     drawBoard(state, paused);
     drawHold(state);
     drawStats(state);
-    drawKeys();
+    drawKeys(state);
     drawNext(state);
     drawMessage(state);
 }
@@ -264,11 +350,15 @@ void Renderer::drawBoard(const GameState& state, bool hideContents) {
     const CellGlyph empty = theme_.emptyCell();
     const bool gameOver = state.mode == GameMode::GameOver;
 
-    for (int row = 0; row < Board::kVisibleHeight; ++row) {
+    const int columns = state.board.width();
+    const int rows = state.board.visibleHeight();
+    const float centreColumn = static_cast<float>(columns - 1) / 2.0F;
+
+    for (int row = 0; row < rows; ++row) {
         const int y = row + Board::kHiddenRows;
         const bool clearing =
             std::find(state.clearingRows.begin(), state.clearingRows.end(), y) != state.clearingRows.end();
-        for (int col = 0; col < Board::kWidth; ++col) {
+        for (int col = 0; col < columns; ++col) {
             const core::CellType cell = state.board.at({col, y});
             if (hideContents || cell == core::CellType::Empty) {
                 drawBoardCell(col, row, empty);
@@ -276,8 +366,8 @@ void Renderer::drawBoard(const GameState& state, bool hideContents) {
             }
             if (clearing) {
                 // Flash, then wipe outwards from the centre of the row.
-                const float centreDistance = std::abs(static_cast<float>(col) - 4.5F);
-                const bool wiped = centreDistance < state.clearProgress * 6.0F - 1.0F;
+                const float centreDistance = std::abs(static_cast<float>(col) - centreColumn);
+                const bool wiped = centreDistance < state.clearProgress * (centreColumn + 1.5F) - 1.0F;
                 drawBoardCell(col, row, wiped ? empty : theme_.clearingCell(pieceOf(cell), state.clearProgress));
                 continue;
             }
@@ -293,10 +383,10 @@ void Renderer::drawBoard(const GameState& state, bool hideContents) {
         return;
     }
 
-    const auto drawPiece = [this](const game::Piece& piece, const CellGlyph& glyph) {
+    const auto drawPiece = [this, rows](const game::Piece& piece, const CellGlyph& glyph) {
         for (const core::Point p : game::cellsOf(piece)) {
             const int row = p.y - Board::kHiddenRows;
-            if (row >= 0 && row < Board::kVisibleHeight) {
+            if (row >= 0 && row < rows) {
                 drawBoardCell(p.x, row, glyph);
             }
         }
@@ -344,6 +434,10 @@ void Renderer::drawMiniPiece(PieceType type, int x, int y, int width, bool dimme
 void Renderer::drawHold(const GameState& state) {
     const Rect& r = layout_.hold;
     drawPanel(back_, r, "HOLD", PanelStyle{BorderStyle::Rounded, theme_.frame(), theme_.heading(), false, {}});
+    if (!state.rules.holdEnabled) {
+        drawCentred(back_, r.x, r.w, r.y + 2, "off", theme_.muted());
+        return;
+    }
     if (state.held && state.mode != GameMode::Paused) {
         drawMiniPiece(*state.held, r.x + 1, r.y + 2, r.w - 2, !state.holdAvailable);
     }
@@ -363,6 +457,8 @@ void Renderer::drawStats(const GameState& state) {
                    theme_.label(), theme_.value());
     drawLabelValue(back_, x, r.y + 4, w, "LINES", formatInt(buf, static_cast<std::uint64_t>(state.stats.lines)),
                    theme_.label(), theme_.value());
+    drawLabelValue(back_, x, r.y + 5, w, "MODE", core::kDifficulties[state.setup.difficulty].name, theme_.label(),
+                   theme_.value());
 
     // Progress towards the next level.
     const int filled = (state.stats.lines % kLinesPerLevel) * w / kLinesPerLevel;
@@ -373,7 +469,7 @@ void Renderer::drawStats(const GameState& state) {
     }
 }
 
-void Renderer::drawKeys() {
+void Renderer::drawKeys(const GameState& state) {
     const Rect& r = layout_.keys;
     if (r.w == 0) {
         return;
@@ -410,6 +506,9 @@ void Renderer::drawKeys() {
             if (y >= r.bottom() - 1) {
                 break;
             }
+            if (b.what == "hold" && !state.rules.holdEnabled) {
+                continue;
+            }
             back_.text(r.x + 2, y, b.key, theme_.value());
             back_.text(r.x + 6, y, b.what, theme_.label());
             ++y;
@@ -426,6 +525,10 @@ void Renderer::drawNext(const GameState& state) {
     const Rect& r = layout_.next;
     drawPanel(back_, r, "NEXT", PanelStyle{BorderStyle::Rounded, theme_.frame(), theme_.heading(), false, {}});
     if (state.mode == GameMode::Paused) {
+        return;
+    }
+    if (layout_.previewCount == 0) {
+        drawCentred(back_, r.x, r.w, r.y + 2, "off", theme_.muted());
         return;
     }
     for (int i = 0; i < layout_.previewCount; ++i) {
@@ -449,8 +552,10 @@ void Renderer::drawMessage(const GameState& state) {
 // ---------------------------------------------------------------------------
 
 Rect Renderer::drawOverlayBox(int innerHeight, std::string_view title) {
+    // As wide as the well, but at least 22 columns so the text fits even on
+    // the small board (the box then overlaps the board frame, like a dialog).
     const Rect& well = layout_.well;
-    const int w = std::min(well.w, 28);
+    const int w = std::clamp(well.w, 22, 28);
     const int h = innerHeight + 2;
     const Rect box{well.x + (well.w - w) / 2, well.y + (well.h - h) / 2, w, h};
     drawPanelCentredTitle(back_, box, title,
@@ -458,24 +563,26 @@ Rect Renderer::drawOverlayBox(int innerHeight, std::string_view title) {
     return box.inset(1);
 }
 
-void Renderer::drawPauseOverlay() {
-    const Rect in = drawOverlayBox(7, "");
-    Style title = theme_.overlayFrame();
-    drawCentred(back_, in.x, in.w, in.y + 1, "PAUSED", title);
+void Renderer::drawKeyHint(int x, int y, std::string_view key, std::string_view action) {
+    Style keyStyle = theme_.accent();
+    keyStyle.bg = theme_.overlay().bg;
+    back_.text(x, y, key, keyStyle);
+    back_.text(x + 3, y, action, theme_.overlay());
+}
 
-    Style key = theme_.accent();
-    key.bg = theme_.overlay().bg;
+void Renderer::drawPauseOverlay() {
+    const Rect in = drawOverlayBox(8, "");
+    drawCentred(back_, in.x, in.w, in.y + 1, "PAUSED", theme_.overlayFrame());
+
     const int x = in.x + (in.w - 12) / 2;
-    back_.text(x, in.y + 3, "P", key);
-    back_.text(x + 3, in.y + 3, "resume", theme_.overlay());
-    back_.text(x, in.y + 4, "R", key);
-    back_.text(x + 3, in.y + 4, "restart", theme_.overlay());
-    back_.text(x, in.y + 5, "Q", key);
-    back_.text(x + 3, in.y + 5, "quit", theme_.overlay());
+    drawKeyHint(x, in.y + 3, "P", "resume");
+    drawKeyHint(x, in.y + 4, "R", "restart");
+    drawKeyHint(x, in.y + 5, "M", "menu");
+    drawKeyHint(x, in.y + 6, "Q", "quit");
 }
 
 void Renderer::drawGameOverOverlay(const GameState& state) {
-    const Rect in = drawOverlayBox(10, "");
+    const Rect in = drawOverlayBox(12, "");
     Style title = theme_.overlayFrame();
     title.fg = theme_.isMonochrome() ? Color{} : Color::rgb(240, 80, 80);
     drawCentred(back_, in.x, in.w, in.y + 1, "GAME OVER", title);
@@ -491,14 +598,12 @@ void Renderer::drawGameOverOverlay(const GameState& state) {
                    label, value);
     drawLabelValue(back_, x, in.y + 5, w, "Level", formatInt(buf, static_cast<std::uint64_t>(state.stats.level)),
                    label, value);
+    drawLabelValue(back_, x, in.y + 6, w, "Mode", core::kDifficulties[state.setup.difficulty].name, label, value);
 
-    Style key = theme_.accent();
-    key.bg = theme_.overlay().bg;
     const int kx = in.x + (in.w - 12) / 2;
-    back_.text(kx, in.y + 7, "R", key);
-    back_.text(kx + 3, in.y + 7, "restart", theme_.overlay());
-    back_.text(kx, in.y + 8, "Q", key);
-    back_.text(kx + 3, in.y + 8, "quit", theme_.overlay());
+    drawKeyHint(kx, in.y + 8, "R", "restart");
+    drawKeyHint(kx, in.y + 9, "M", "menu");
+    drawKeyHint(kx, in.y + 10, "Q", "quit");
 }
 
 }  // namespace tetromino::tui

@@ -132,7 +132,7 @@ TEST(renderer_draws_board_pieces_and_stats) {
     r.resize({80, 24});
     core::GameState s;
     s.mode = core::GameMode::Playing;
-    s.active = game::spawnPiece(core::PieceType::O);
+    s.active = game::spawnPiece(core::PieceType::O, game::Board::kDefaultWidth);
     s.stats.score = 1234567;
     r.render(s);
     const ScreenBuffer& f = r.frame();
@@ -165,12 +165,12 @@ TEST(renderer_animates_line_clear) {
     r.resize({80, 24});
     core::GameState s;
     s.mode = core::GameMode::Playing;
-    const int y = game::Board::kHeight - 1;
-    for (int x = 0; x < game::Board::kWidth; ++x) {
+    const int y = game::Board::kDefaultHeight - 1;
+    for (int x = 0; x < game::Board::kDefaultWidth; ++x) {
         s.board.set({x, y}, core::CellType::T);
     }
     s.clearingRows = {y};
-    const tui::Layout& l = r.layout();
+    const tui::Layout& l = r.layoutFor(s);
     const int row = l.well.bottom() - 1;
 
     s.clearProgress = 0.2F;  // flashing: all cells still drawn, brighter than normal
@@ -185,4 +185,56 @@ TEST(renderer_animates_line_clear) {
     s.clearingRows.clear();  // normal locked cell for comparison
     r.render(s);
     CHECK(!(r.frame().at(l.well.x, row).style.fg == flash));
+}
+
+TEST(layout_depends_on_board_size) {
+    const tui::Layout classic = tui::computeLayout({200, 60}, {10, 20}, 5);
+    const tui::Layout wide = tui::computeLayout({200, 60}, {14, 20}, 5);
+    CHECK(wide.well.w > classic.well.w);
+    CHECK(tui::computeLayout({58, 22}, {10, 20}, 5).fits);
+    CHECK(!tui::computeLayout({58, 22}, {14, 20}, 5).fits);
+    CHECK_EQ(tui::computeLayout({58, 22}, {14, 20}, 5).minimum.columns, 66);
+    CHECK_EQ(tui::computeLayout({80, 24}, {10, 20}, 0).previewCount, 0);
+    CHECK_EQ(tui::computeLayout({80, 24}, {10, 20}, 1).previewCount, 1);
+}
+
+TEST(renderer_hides_disabled_features) {
+    tui::Renderer r{tui::Theme::standard(), ColorMode::TrueColor};
+    r.resize({80, 24});
+    core::GameState s;
+    s.mode = core::GameMode::Playing;
+    s.rules = core::Rules{false, 0, false};
+    s.active = game::spawnPiece(core::PieceType::O, 10);
+    r.render(s);
+    const tui::Layout& l = r.layout();
+    const std::string holdRow = rowText(r.frame(), l.hold.y + 2);
+    const std::string nextRow = rowText(r.frame(), l.next.y + 2);
+    CHECK(contains(holdRow, "off"));
+    CHECK(contains(nextRow, "off"));
+    // No ghost on the bottom row.
+    CHECK(r.frame().at(l.well.x + 8, l.well.bottom() - 1).ch != U'░');
+}
+
+TEST(start_screen_shows_setup_menu) {
+    tui::Renderer r{tui::Theme::standard(), ColorMode::TrueColor};
+    r.resize({80, 24});
+    core::GameState s;  // start screen, Classic / Normal
+    r.render(s);
+    std::string all;
+    for (int y = 0; y < 24; ++y) {
+        all += rowText(r.frame(), y) + "\n";
+    }
+    CHECK(contains(all, "BOARD"));
+    CHECK(contains(all, "Classic"));
+    CHECK(contains(all, "DIFFICULTY"));
+    CHECK(contains(all, "Normal"));
+    CHECK(!contains(all, "needs a"));  // classic fits 80x24
+
+    s.setup.boardSize = *core::findBoardSize("tall");  // needs 26 rows
+    r.render(s);
+    all.clear();
+    for (int y = 0; y < 24; ++y) {
+        all += rowText(r.frame(), y) + "\n";
+    }
+    CHECK(contains(all, "needs a"));
 }

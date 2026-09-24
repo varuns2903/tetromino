@@ -196,10 +196,23 @@ std::optional<core::Action> actionFor(const KeyEvent& event, core::GameMode mode
 
     switch (mode) {
     case GameMode::StartScreen:
-        if (event.key == Key::Enter || event.key == Key::Space) {
-            return Action::Start;
+        switch (event.key) {
+        case Key::Enter:
+        case Key::Space: return Action::Start;
+        case Key::Up: return Action::MenuUp;
+        case Key::Down: return Action::MenuDown;
+        case Key::Left: return Action::MenuLeft;
+        case Key::Right: return Action::MenuRight;
+        case Key::Tab: return Action::MenuDown;
+        default: break;
         }
-        return std::nullopt;
+        switch (ch) {
+        case 'w': return Action::MenuUp;
+        case 's': return Action::MenuDown;
+        case 'a': return Action::MenuLeft;
+        case 'd': return Action::MenuRight;
+        default: return std::nullopt;
+        }
 
     case GameMode::Playing:
         switch (event.key) {
@@ -230,11 +243,17 @@ std::optional<core::Action> actionFor(const KeyEvent& event, core::GameMode mode
         if (ch == 'r') {
             return Action::Restart;
         }
+        if (ch == 'm') {
+            return Action::OpenMenu;
+        }
         return std::nullopt;
 
     case GameMode::GameOver:
         if (ch == 'r' || event.key == Key::Enter) {
             return Action::Restart;
+        }
+        if (ch == 'm') {
+            return Action::OpenMenu;
         }
         return std::nullopt;
 

@@ -40,8 +40,9 @@ struct Piece {
 // Absolute board coordinates of the piece's four cells.
 [[nodiscard]] PieceCells cellsOf(const Piece& piece);
 
-// A new piece of `type` at its spawn position (top-centre of the visible area).
-[[nodiscard]] Piece spawnPiece(core::PieceType type);
+// A new piece of `type` at its spawn position: top of the visible area,
+// centred on a board `boardWidth` columns wide.
+[[nodiscard]] Piece spawnPiece(core::PieceType type, int boardWidth);
 
 [[nodiscard]] constexpr Piece moved(Piece piece, int dx, int dy) {
     piece.position.x += dx;

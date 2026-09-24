@@ -5,12 +5,11 @@
 // The board knows which cells are filled and by what, and how to remove full
 // rows. It doesn't know about the falling piece, scoring or drawing.
 //
-// Coordinates: x in [0, kWidth), y in [0, kHeight), y grows downwards.
-// The top kHiddenRows rows are the spawn buffer: pieces appear there and can
-// be rotated into it, but it isn't drawn. Rows kHiddenRows .. kHeight-1 are
-// the 20 visible rows.
+// Coordinates: x in [0, width()), y in [0, height()), y grows downwards.
+// The top kHiddenRows rows are the spawn buffer: pieces can be rotated into
+// it, but it isn't drawn. Rows kHiddenRows .. height()-1 are the visible
+// playfield (visibleHeight() rows, 20 on the classic board).
 
-#include <array>
 #include <span>
 #include <vector>
 
@@ -20,15 +19,26 @@ namespace tetromino::game {
 
 class Board {
 public:
-    static constexpr int kWidth = 10;
-    static constexpr int kVisibleHeight = 20;
     static constexpr int kHiddenRows = 4;
-    static constexpr int kHeight = kVisibleHeight + kHiddenRows;
+    static constexpr int kDefaultWidth = 10;
+    static constexpr int kDefaultVisibleHeight = 20;
+    static constexpr int kDefaultHeight = kDefaultVisibleHeight + kHiddenRows;
 
-    Board();
+    static constexpr int kMinWidth = 4;
+    static constexpr int kMinVisibleHeight = 8;
 
-    [[nodiscard]] static constexpr bool inBounds(core::Point p) {
-        return p.x >= 0 && p.x < kWidth && p.y >= 0 && p.y < kHeight;
+    // The classic 10 x 20 board.
+    Board() : Board(kDefaultWidth, kDefaultVisibleHeight) {}
+    // A board `width` columns wide with `visibleHeight` visible rows (plus the
+    // hidden buffer). Sizes below the minimums are raised to them.
+    Board(int width, int visibleHeight);
+
+    [[nodiscard]] int width() const { return width_; }
+    [[nodiscard]] int height() const { return height_; }
+    [[nodiscard]] int visibleHeight() const { return height_ - kHiddenRows; }
+
+    [[nodiscard]] bool inBounds(core::Point p) const {
+        return p.x >= 0 && p.x < width_ && p.y >= 0 && p.y < height_;
     }
 
     // Cell contents. Out-of-bounds reads return Empty.
@@ -59,11 +69,13 @@ public:
     int clearFullRows();
 
 private:
-    [[nodiscard]] static constexpr std::size_t indexOf(core::Point p) {
-        return static_cast<std::size_t>(p.y * kWidth + p.x);
+    [[nodiscard]] std::size_t indexOf(core::Point p) const {
+        return static_cast<std::size_t>(p.y * width_ + p.x);
     }
 
-    std::array<core::CellType, static_cast<std::size_t>(kWidth * kHeight)> cells_{};
+    int width_;
+    int height_;
+    std::vector<core::CellType> cells_;
 };
 
 }  // namespace tetromino::game

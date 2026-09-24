@@ -30,8 +30,16 @@ public:
     void update(Duration dt);
 
     // Start playing on a pre-filled board instead of an empty one (puzzle
-    // setups, tests). Equivalent to Action::Start otherwise.
+    // setups, tests). Uses the base config's rules as-is (no preset), with
+    // the board's own dimensions.
     void startWithBoard(const game::Board& board);
+
+    // Pre-select the start-screen menu entries (indices into kBoardSizes /
+    // kDifficulties), e.g. from command-line flags.
+    void selectSetup(std::size_t boardSize, std::size_t difficulty);
+
+    // The rules of the game in progress (base config + chosen presets).
+    [[nodiscard]] const GameConfig& config() const { return config_; }
 
     [[nodiscard]] const GameState& state() const { return state_; }
     [[nodiscard]] GameMode mode() const { return state_.mode; }
@@ -46,6 +54,8 @@ public:
 
 private:
     void startNewGame();
+    void openMenu();
+    void applyStartScreen(Action action);
     void applyPlaying(Action action);
 
     // Piece lifecycle.
@@ -70,7 +80,8 @@ private:
 
     void touch() { ++revision_; }
 
-    GameConfig config_;
+    GameConfig base_;    // as passed to the constructor
+    GameConfig config_;  // base_ + the presets chosen for the current game
     game::Scoring scoring_;
     game::PieceGenerator generator_;
     GameState state_;

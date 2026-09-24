@@ -79,6 +79,20 @@ std::variant<Options, std::string> parseOptions(int argc, const char* const* arg
                 return std::string{"--level expects a number between 1 and 30"};
             }
             options.startLevel = *level;
+        } else if (name == "--size") {
+            const auto v = value();
+            const auto index = v ? core::findBoardSize(*v) : std::nullopt;
+            if (!index) {
+                return std::string{"--size expects one of: small, classic, wide, tall"};
+            }
+            options.boardSize = *index;
+        } else if (name == "--difficulty") {
+            const auto v = value();
+            const auto index = v ? core::findDifficulty(*v) : std::nullopt;
+            if (!index) {
+                return std::string{"--difficulty expects one of: easy, normal, hard, expert"};
+            }
+            options.difficulty = *index;
         } else if (name == "--fps") {
             const auto v = value();
             const auto fps = v ? parseNumber<int>(*v) : std::nullopt;
@@ -107,8 +121,18 @@ std::string usage(const char* programName) {
 
 Tetromino: a falling-block puzzle game for the Linux terminal.
 
+The start screen lets you pick a board size and a difficulty:
+
+  Board       Small 8×16 · Classic 10×20 · Wide 14×20 · Tall 10×24
+  Difficulty  Easy    slower gravity, hold, 5 previews, ghost, long lock delay
+              Normal  standard gravity, hold, 3 previews, ghost
+              Hard    faster (+2 levels, ×0.6 fall time), no hold, 1 preview
+              Expert  much faster (+4 levels, ×0.35), no hold, no preview, no ghost
+
 Options:
-  --level N        start at level N (1-30, default 1)
+  --size NAME      pre-select the board: small | classic | wide | tall
+  --difficulty D   pre-select the difficulty: easy | normal | hard | expert
+  --level N        start at level N (1-30, default 1; difficulty may add more)
   --seed N         fixed random seed, for a reproducible piece sequence
   --color MODE     truecolor | 256 | 16 | mono   (default: auto-detect)
   --mono           same as --color mono
@@ -122,7 +146,8 @@ Controls:
   ↓ / S            soft drop       Z              rotate counter-clockwise
   Space            hard drop       C              hold
   P / Esc          pause           R              restart (paused / game over)
-  Q                quit            Ctrl-Z         suspend to shell
+  M                menu (paused / game over)      Ctrl-Z         suspend to shell
+  Q                quit
 )";
     return text;
 }

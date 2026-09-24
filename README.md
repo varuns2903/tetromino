@@ -36,6 +36,9 @@ and putting the terminal back the way it was when the program exits.
 
 ## Features
 
+- **Setup menu on the start screen**: pick a board size and a difficulty
+  before each game (see [Board sizes and difficulty](#board-sizes-and-difficulty))
+
 - Modern falling-block rules: 10×20 field with a hidden spawn buffer, all seven
   tetrominoes, **rotation with wall and floor kicks** (SRS kick tables), **7-bag randomizer**,
   hold (once per piece), a 5-piece next queue, ghost piece, lock delay with
@@ -45,7 +48,7 @@ and putting the terminal back the way it was when the program exits.
   common modern speed curve
 - Line-clear animation (a flash, then a wipe out from the centre) with a
   SINGLE / DOUBLE / TRIPLE / QUAD! callout
-- Start screen, pause, game over and restart, all run by one explicit state machine
+- Start menu, pause, game over, restart and back-to-menu, all run by one explicit state machine
 - Responsive layout: the game is centred, switches to double-size cells on big
   terminals, and shows a "terminal too small" screen (and auto-pauses) when
   the window is too small
@@ -60,7 +63,7 @@ and putting the terminal back the way it was when the program exits.
   re-entered on `fg`)
 - Auto-pause when the window loses focus
 - Reproducible games with `--seed`
-- 98 unit tests with no dependencies, plus a pty-based terminal-restoration check
+- 116 unit tests with no dependencies, plus a pty-based terminal-restoration check
 
 ## Controls
 
@@ -74,6 +77,9 @@ and putting the terminal back the way it was when the program exits.
 | `C`                | Hold                         |
 | `P` / `Esc`        | Pause / resume (Esc quits from the start and game-over screens) |
 | `R`                | Restart (paused or game over)|
+| `M`                | Back to the setup menu (paused or game over) |
+| `↑` `↓` / `W` `S`  | Menu: choose board / difficulty row |
+| `←` `→` / `A` `D`  | Menu: change the selected option |
 | `Enter`            | Start (start screen)         |
 | `Q` / `Ctrl-C`     | Quit                         |
 | `Ctrl-Z`           | Suspend to the shell (`fg` to resume) |
@@ -117,9 +123,12 @@ arrow keys, resizes, `SIGTERM`, `SIGHUP`, and the crash paths `SIGSEGV` and
 ## Running
 
 ```
-tetromino [--level N] [--seed N] [--color truecolor|256|16|mono] [--mono] [--fps N] [--debug]
+tetromino [--size NAME] [--difficulty NAME] [--level N] [--seed N] [--color truecolor|256|16|mono] [--mono] [--fps N] [--debug]
 ```
 
+- `--size` and `--difficulty` pre-select the start-menu entries
+  (`small|classic|wide|tall`, `easy|normal|hard|expert`). You still confirm
+  with Enter.
 - `--seed N` gives the same piece sequence on every machine. The randomizer
   doesn't use the implementation-defined `std::uniform_int_distribution` or
   `std::shuffle`.
@@ -134,8 +143,10 @@ Tested headlessly in tmux and on raw ptys. The game only uses widely supported
 sequences, so it should work in Kitty, Foot, Alacritty, WezTerm, GNOME Terminal,
 Konsole, xterm, tmux and screen.
 
-- **Minimum size**: 58×22. At 76×42 and above the board is drawn at double
-  size.
+- **Minimum size**: the start menu needs 50×20; the game depends on the
+  board: 54×18 (Small), 58×22 (Classic), 66×22 (Wide), 58×26 (Tall). The
+  start menu warns when the chosen board won't fit. Large terminals get
+  double-size cells.
 - **Colour**: detected from `COLORTERM` and `TERM`. Override it with `--color`.
 - **Fonts**: the terminal needs a UTF-8 locale and a font with box-drawing
   (`╭─╮`) and block (`█░`) glyphs, which almost every monospace font has.
@@ -147,7 +158,7 @@ Konsole, xterm, tmux and screen.
 ```
 tetromino/
 ├── include/ src/
-│   ├── core/    Game (engine + state machine), GameState (snapshot), GameConfig, Types
+│   ├── core/    Game (engine + state machine), GameState (snapshot), GameConfig, Presets, Types
 │   ├── game/    Board, Piece, PieceGenerator, Collision, Rotation, Scoring
 │   ├── tui/     Terminal, Input, Ansi, Color, Theme, ScreenBuffer, Panel, Layout, Renderer
 │   ├── util/    Logger, Random
@@ -320,11 +331,38 @@ outside the walls or floor or already filled. Movement, every wall-kick test,
 gravity, hard drop, the ghost piece and spawning all call `fits()`; nothing else
 checks for collisions.
 
+## Board sizes and difficulty
+
+The start screen is a small setup menu. `↑`/`↓` pick a row, `←`/`→` change
+it, and `Enter` starts. `M` from the pause or game-over screen returns to it.
+
+| Board   | Size (columns × rows) |
+|---------|-----------------------|
+| Small   | 8 × 16  |
+| Classic | 10 × 20 |
+| Wide    | 14 × 20 |
+| Tall    | 10 × 24 |
+
+| Difficulty | Fall speed | Start level | Hold | Next pieces shown | Ghost | Lock delay |
+|------------|------------|-------------|------|-------------------|-------|------------|
+| Easy       | ×1.5 (slower) | +0 | ✓ | 5 | ✓ | 700 ms |
+| Normal     | standard    | +0 | ✓ | 3 | ✓ | 500 ms |
+| Hard       | ×0.6 (faster) | +2 | ✗ | 1 | ✓ | 400 ms |
+| Expert     | ×0.35 (much faster) | +4 | ✗ | 0 | ✗ | 300 ms |
+
+A higher start level also means more points per line, since line clears are
+multiplied by the level. The presets live in `include/core/Presets.hpp`: a
+difficulty is data (gravity multiplier, level bonus, hold / preview / ghost
+switches, lock delay), and `core::configFor()` applies it to the base
+`GameConfig` when a game starts. The front end reads what's enabled from
+`GameState::rules` and shows `off` in the HOLD and NEXT panels when a feature
+is disabled.
+
 ## Game mechanics
 
-- **Board**: 10 wide, 20 visible rows and 4 hidden rows above them. Pieces
-  spawn on the top visible row, centred (I at columns 3–6, O at 4–5, the rest
-  at 3–5).
+- **Board**: the chosen width and visible height (10 × 20 by default), with 4
+  hidden rows above. Pieces spawn on the top visible row, centred (on the
+  classic board: I at columns 3–6, O at 4–5, the rest at 3–5).
 - **Rotation**: SRS kick tables. The four states are generated at compile time by rotating
   the spawn shape inside its 3×3 (or 4×4 for I) box. The kick tables follow the
   widely published reference, with y flipped because the board's y axis points down.
@@ -337,7 +375,8 @@ checks for collisions.
 - **Game over**: a new piece can't spawn (block out), or a piece locks entirely
   inside the hidden rows (lock out).
 - **Levels**: `level = start + lines / 10`. Gravity is
-  `(0.8 − (level−1)·0.007)^(level−1)` seconds per row.
+  `(0.8 − (level−1)·0.007)^(level−1)` seconds per row, multiplied by the
+  difficulty's fall-speed factor.
 
 Every rule lives in `GameConfig` / `ScoringRules`: lock delay, reset limit,
 clear delay, gravity curve, points and lines per level.

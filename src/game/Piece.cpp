@@ -71,11 +71,12 @@ PieceCells cellsOf(const Piece& piece) {
     return cells;
 }
 
-Piece spawnPiece(PieceType type) {
+Piece spawnPiece(PieceType type, int boardWidth) {
     // Centred horizontally (left of centre for odd widths), with the piece's top row on the first visible row. The I
     // piece's cells sit on row 1 of its box, so its box starts one row higher.
-    // Integer division gives I -> columns 3-6, O -> 4-5, others -> 3-5.
-    const int x = (Board::kWidth - boxSize(type)) / 2;
+    // Integer division rounds left: on the 10-wide board I -> columns 3-6,
+    // O -> 4-5, others -> 3-5.
+    const int x = (boardWidth - boxSize(type)) / 2;
     const int y = Board::kHiddenRows - (type == PieceType::I ? 1 : 0);
     return Piece{type, Rotation::Spawn, Point{x, y}};
 }

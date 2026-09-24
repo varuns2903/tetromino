@@ -1,6 +1,7 @@
 #include "core/Game.hpp"
 
 #include <algorithm>
+#include <chrono>
 
 #include "game/Collision.hpp"
 #include "game/Piece.hpp"
@@ -12,8 +13,15 @@ using game::Board;
 using game::Piece;
 
 Game::Game(std::uint64_t seed, GameConfig config)
-    : config_(config), scoring_(config.scoring), generator_(seed) {
+    : base_(config), config_(config), scoring_(config.scoring), generator_(seed) {
+    state_.board = Board{config_.boardWidth, config_.boardHeight};
     refreshPreview();
+}
+
+void Game::selectSetup(std::size_t boardSize, std::size_t difficulty) {
+    state_.setup.boardSize = std::min(boardSize, kBoardSizes.size() - 1);
+    state_.setup.difficulty = std::min(difficulty, kDifficulties.size() - 1);
+    touch();
 }
 
 // ---------------------------------------------------------------------------
@@ -29,9 +37,7 @@ void Game::apply(Action action) {
 
     switch (state_.mode) {
     case GameMode::StartScreen:
-        if (action == Action::Start) {
-            startNewGame();
-        }
+        applyStartScreen(action);
         break;
     case GameMode::Playing:
         applyPlaying(action);
@@ -42,16 +48,63 @@ void Game::apply(Action action) {
             touch();
         } else if (action == Action::Restart) {
             startNewGame();
+        } else if (action == Action::OpenMenu) {
+            openMenu();
         }
         break;
     case GameMode::GameOver:
         if (action == Action::Restart) {
             startNewGame();
+        } else if (action == Action::OpenMenu) {
+            openMenu();
         }
         break;
     case GameMode::Quit:
         break;
     }
+}
+
+void Game::applyStartScreen(Action action) {
+    Setup& setup = state_.setup;
+    // Left/right step through the options of the focused row, clamped at
+    // both ends; up/down move the focus between rows.
+    const auto step = [](std::size_t& index, std::size_t count, int delta) {
+        if (delta < 0 && index > 0) {
+            --index;
+        } else if (delta > 0 && index + 1 < count) {
+            ++index;
+        }
+    };
+    switch (action) {
+    case Action::MenuUp:
+    case Action::MenuDown:
+        setup.focus = setup.focus == Setup::Field::BoardSize ? Setup::Field::Difficulty : Setup::Field::BoardSize;
+        break;
+    case Action::MenuLeft:
+    case Action::MenuRight: {
+        const int delta = action == Action::MenuLeft ? -1 : +1;
+        if (setup.focus == Setup::Field::BoardSize) {
+            step(setup.boardSize, kBoardSizes.size(), delta);
+        } else {
+            step(setup.difficulty, kDifficulties.size(), delta);
+        }
+        break;
+    }
+    case Action::Start:
+        config_ = configFor(base_, setup.boardSize, setup.difficulty);
+        startNewGame();
+        return;
+    default:
+        return;
+    }
+    touch();
+}
+
+void Game::openMenu() {
+    state_.mode = GameMode::StartScreen;
+    state_.active.reset();
+    state_.clearingRows.clear();
+    touch();
 }
 
 void Game::applyPlaying(Action action) {
@@ -107,7 +160,10 @@ void Game::updateGravity(Duration dt) {
     // Gravity is time-based, not frame-based: we accumulate elapsed time and
     // move one row per full interval. At 30 or 144 FPS the piece falls at the
     // same speed; at high levels several rows can fall in one frame.
-    const Duration interval = config_.gravity(state_.stats.level);
+    const auto scaled = std::chrono::duration_cast<Duration>(
+        std::chrono::duration<double, Duration::period>(static_cast<double>(config_.gravity(state_.stats.level).count()) *
+                                                        config_.gravityScale));
+    const Duration interval = std::max<Duration>(scaled, std::chrono::milliseconds{1});
     gravityTimer_ += dt;
     while (gravityTimer_ >= interval) {
         if (!game::canMove(state_.board, *state_.active, 0, 1)) {
@@ -136,7 +192,9 @@ void Game::updateLockDelay(Duration dt) {
 // ---------------------------------------------------------------------------
 
 void Game::startNewGame() {
-    state_.board.clear();
+    state_.board = Board{config_.boardWidth, config_.boardHeight};
+    state_.rules = Rules{config_.holdEnabled, std::clamp(config_.previewCount, 0, static_cast<int>(kPreviewCount)),
+                         config_.ghostEnabled};
     state_.active.reset();
     state_.held.reset();
     state_.holdAvailable = true;
@@ -150,6 +208,8 @@ void Game::startNewGame() {
 }
 
 void Game::startWithBoard(const game::Board& board) {
+    config_.boardWidth = board.width();
+    config_.boardHeight = board.visibleHeight();
     startNewGame();
     state_.board = board;
     // The first piece was spawned onto an empty board; re-check it.
@@ -173,7 +233,7 @@ void Game::spawnFromQueue() {
 }
 
 bool Game::spawn(PieceType type) {
-    const Piece piece = game::spawnPiece(type);
+    const Piece piece = game::spawnPiece(type, state_.board.width());
     gravityTimer_ = Duration::zero();
     lockTimer_ = Duration::zero();
     lockResets_ = 0;
@@ -300,7 +360,7 @@ bool Game::tryRotate(RotationDirection direction) {
 void Game::holdPiece() {
     // One hold per piece: after holding, the next piece (whether it came
     // from the hold slot or the queue) can't be swapped back until it locks.
-    if (!state_.holdAvailable) {
+    if (!state_.rules.holdEnabled || !state_.holdAvailable) {
         return;
     }
     const PieceType current = state_.active->type;

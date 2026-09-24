@@ -10,7 +10,7 @@ using game::Board;
 namespace {
 
 void fillRow(Board& b, int y, CellType type = CellType::I) {
-    for (int x = 0; x < Board::kWidth; ++x) {
+    for (int x = 0; x < Board::kDefaultWidth; ++x) {
         b.set({x, y}, type);
     }
 }
@@ -21,15 +21,15 @@ TEST(new_board_is_empty) {
     const Board b;
     CHECK(b.isEmpty());
     CHECK(b.fullRows().empty());
-    for (int y = 0; y < Board::kHeight; ++y) {
+    for (int y = 0; y < Board::kDefaultHeight; ++y) {
         CHECK(b.isRowEmpty(y));
     }
 }
 
 TEST(standard_dimensions) {
-    CHECK_EQ(Board::kWidth, 10);
-    CHECK_EQ(Board::kVisibleHeight, 20);
-    CHECK_EQ(Board::kHeight, Board::kVisibleHeight + Board::kHiddenRows);
+    CHECK_EQ(Board::kDefaultWidth, 10);
+    CHECK_EQ(Board::kDefaultVisibleHeight, 20);
+    CHECK_EQ(Board::kDefaultHeight, Board::kDefaultVisibleHeight + Board::kHiddenRows);
 }
 
 TEST(set_and_read_cells) {
@@ -46,8 +46,8 @@ TEST(set_and_read_cells) {
 TEST(out_of_bounds_reads_are_empty_and_writes_ignored) {
     Board b;
     b.set({-1, 0}, CellType::Z);
-    b.set({Board::kWidth, 0}, CellType::Z);
-    b.set({0, Board::kHeight}, CellType::Z);
+    b.set({Board::kDefaultWidth, 0}, CellType::Z);
+    b.set({0, Board::kDefaultHeight}, CellType::Z);
     CHECK(b.isEmpty());
     CHECK(b.at({-1, 5}) == CellType::Empty);
     CHECK(!b.isOccupied({100, 100}));
@@ -56,11 +56,11 @@ TEST(out_of_bounds_reads_are_empty_and_writes_ignored) {
 TEST(walls_and_floor_are_blocked) {
     const Board b;
     CHECK(b.isBlocked({-1, 5}));
-    CHECK(b.isBlocked({Board::kWidth, 5}));
-    CHECK(b.isBlocked({5, Board::kHeight}));
+    CHECK(b.isBlocked({Board::kDefaultWidth, 5}));
+    CHECK(b.isBlocked({5, Board::kDefaultHeight}));
     CHECK(b.isBlocked({5, -1}));
     CHECK(!b.isBlocked({0, 0}));
-    CHECK(!b.isBlocked({Board::kWidth - 1, Board::kHeight - 1}));
+    CHECK(!b.isBlocked({Board::kDefaultWidth - 1, Board::kDefaultHeight - 1}));
 }
 
 TEST(detects_full_rows) {
@@ -115,12 +115,12 @@ TEST(clearing_preserves_cell_types) {
     fillRow(b, 23);
     const CellType types[] = {CellType::I, CellType::O, CellType::T, CellType::S, CellType::Z,
                               CellType::J, CellType::L, CellType::I, CellType::O, CellType::T};
-    for (int x = 0; x < Board::kWidth; ++x) {
+    for (int x = 0; x < Board::kDefaultWidth; ++x) {
         b.set({x, 22}, types[x]);
     }
     b.set({0, 22}, CellType::Empty);  // keep row 22 incomplete
     b.clearFullRows();
-    for (int x = 1; x < Board::kWidth; ++x) {
+    for (int x = 1; x < Board::kDefaultWidth; ++x) {
         CHECK(b.at({x, 23}) == types[x]);
     }
 }
@@ -130,4 +130,24 @@ TEST(clear_resets_board) {
     fillRow(b, 5);
     b.clear();
     CHECK(b.isEmpty());
+}
+
+TEST(custom_board_dimensions) {
+    Board b{14, 22};
+    CHECK_EQ(b.width(), 14);
+    CHECK_EQ(b.visibleHeight(), 22);
+    CHECK_EQ(b.height(), 22 + Board::kHiddenRows);
+    CHECK(b.isBlocked({14, 5}));
+    CHECK(!b.isBlocked({13, 5}));
+    for (int x = 0; x < 14; ++x) {
+        b.set({x, b.height() - 1}, CellType::S);
+    }
+    CHECK_EQ(b.clearFullRows(), 1);
+    CHECK(b.isEmpty());
+}
+
+TEST(board_size_is_clamped_to_minimum) {
+    const Board b{1, 1};
+    CHECK_EQ(b.width(), Board::kMinWidth);
+    CHECK_EQ(b.visibleHeight(), Board::kMinVisibleHeight);
 }

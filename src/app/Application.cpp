@@ -71,6 +71,7 @@ RunSummary Application::run() {
     core::GameConfig config;
     config.startLevel = options_.startLevel;
     core::Game game{seed, config};
+    game.selectSetup(options_.boardSize, options_.difficulty);
 
     tui::Terminal terminal;
     tui::Input input{terminal};
@@ -82,7 +83,7 @@ RunSummary Application::run() {
         renderer.resize(size);
         logger_.debug(std::format("resize {}x{} fits={}", size.columns, size.rows, renderer.layout().fits));
         // The game can't be seen on the "too small" screen; don't let it run.
-        if (!renderer.layout().fits && game.mode() == core::GameMode::Playing) {
+        if (game.mode() == core::GameMode::Playing && !renderer.layoutFor(game.state()).fits) {
             game.apply(core::Action::Pause);
         }
     };

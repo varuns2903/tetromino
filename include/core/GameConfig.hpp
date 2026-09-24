@@ -3,7 +3,9 @@
 // Tunable game rules. Defaults follow common modern falling-block conventions.
 
 #include <chrono>
+#include <cstddef>
 
+#include "game/Board.hpp"
 #include "game/Scoring.hpp"
 
 namespace tetromino::core {
@@ -21,6 +23,18 @@ using GravityCurve = Duration (*)(int level);
 struct GameConfig {
     int startLevel = 1;
 
+    // Playfield size (visible rows; the hidden spawn buffer is added on top).
+    int boardWidth = game::Board::kDefaultWidth;
+    int boardHeight = game::Board::kDefaultVisibleHeight;
+
+    // Difficulty knobs. The defaults are the most forgiving full-featured
+    // rules; presets (core/Presets.hpp) adjust them.
+    bool holdEnabled = true;
+    int previewCount = 5;
+    bool ghostEnabled = true;
+    // Multiplies the gravity interval: 0.5 = pieces fall twice as fast.
+    double gravityScale = 1.0;
+
     // How long a grounded piece may still be moved/rotated before locking.
     Duration lockDelay = std::chrono::milliseconds{500};
     // Each successful move/rotate while grounded restarts the lock timer, at
@@ -35,5 +49,10 @@ struct GameConfig {
 
     game::ScoringRules scoring{};
 };
+
+// `base` with the board size and difficulty preset at the given indices
+// (into kBoardSizes / kDifficulties) applied. Out-of-range indices fall back
+// to the defaults.
+[[nodiscard]] GameConfig configFor(const GameConfig& base, std::size_t boardSize, std::size_t difficulty);
 
 }  // namespace tetromino::core

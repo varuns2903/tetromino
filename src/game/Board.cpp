@@ -7,7 +7,10 @@ namespace tetromino::game {
 using core::CellType;
 using core::Point;
 
-Board::Board() { clear(); }
+Board::Board(int width, int visibleHeight)
+    : width_(std::max(width, kMinWidth)),
+      height_(std::max(visibleHeight, kMinVisibleHeight) + kHiddenRows),
+      cells_(static_cast<std::size_t>(width_ * height_), CellType::Empty) {}
 
 CellType Board::at(Point p) const { return inBounds(p) ? cells_[indexOf(p)] : CellType::Empty; }
 
@@ -21,19 +24,19 @@ void Board::set(Point p, CellType type) {
     }
 }
 
-void Board::clear() { cells_.fill(CellType::Empty); }
+void Board::clear() { std::fill(cells_.begin(), cells_.end(), CellType::Empty); }
 
 bool Board::isRowFull(int y) const {
-    for (int x = 0; x < kWidth; ++x) {
+    for (int x = 0; x < width_; ++x) {
         if (!isOccupied({x, y})) {
             return false;
         }
     }
-    return y >= 0 && y < kHeight;
+    return y >= 0 && y < height_;
 }
 
 bool Board::isRowEmpty(int y) const {
-    for (int x = 0; x < kWidth; ++x) {
+    for (int x = 0; x < width_; ++x) {
         if (isOccupied({x, y})) {
             return false;
         }
@@ -47,7 +50,7 @@ bool Board::isEmpty() const {
 
 std::vector<int> Board::fullRows() const {
     std::vector<int> rows;
-    for (int y = 0; y < kHeight; ++y) {
+    for (int y = 0; y < height_; ++y) {
         if (isRowFull(y)) {
             rows.push_back(y);
         }
@@ -62,13 +65,13 @@ void Board::removeRows(std::span<const int> rows) {
     // Walk from the bottom up, copying every surviving row to the next free
     // destination row. One pass, no matter how many rows are removed or
     // whether they're contiguous.
-    int dst = kHeight - 1;
-    for (int src = kHeight - 1; src >= 0; --src) {
+    int dst = height_ - 1;
+    for (int src = height_ - 1; src >= 0; --src) {
         if (std::find(rows.begin(), rows.end(), src) != rows.end()) {
             continue;
         }
         if (dst != src) {
-            for (int x = 0; x < kWidth; ++x) {
+            for (int x = 0; x < width_; ++x) {
                 cells_[indexOf({x, dst})] = cells_[indexOf({x, src})];
             }
         }
@@ -76,7 +79,7 @@ void Board::removeRows(std::span<const int> rows) {
     }
     // Whatever is left at the top is new, empty space.
     for (; dst >= 0; --dst) {
-        for (int x = 0; x < kWidth; ++x) {
+        for (int x = 0; x < width_; ++x) {
             cells_[indexOf({x, dst})] = CellType::Empty;
         }
     }

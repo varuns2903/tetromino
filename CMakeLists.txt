@@ -48,6 +48,7 @@ endif()
 add_library(tetromino_engine STATIC
     src/core/Game.cpp
     src/core/GameConfig.cpp
+    src/core/Presets.cpp
     src/core/GameState.cpp
     src/game/Board.cpp
     src/game/Piece.cpp

@@ -60,9 +60,16 @@ enum class Action : std::uint8_t {
     RotateCounterClockwise,
     Hold,
     Pause,    // toggles between Playing and Paused
-    Start,    // leave the start screen
-    Restart,  // new game (from game over or pause)
+    Start,    // leave the start screen with the selected setup
+    Restart,  // new game with the same setup (from game over or pause)
+    OpenMenu, // back to the start screen to change the setup
     Quit,
+
+    // Start-screen setup menu.
+    MenuUp,
+    MenuDown,
+    MenuLeft,
+    MenuRight,
 };
 
 // The top-level state machine. Exactly one of these is active at a time.

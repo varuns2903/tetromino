@@ -47,12 +47,21 @@ struct Layout {
     Rect keys;   // empty (w == 0) if there's no room
     Rect next;
     Rect message;  // free space under NEXT, for "QUAD!" etc.
-    int previewCount = 0;
+    int previewCount = 0;  // preview slots that fit (0 if none requested)
 
     // The whole game area, for centring start-screen content.
     Rect content;
 };
 
-[[nodiscard]] Layout computeLayout(TerminalSize terminal);
+struct BoardShape {
+    int columns = 10;
+    int rows = 20;  // visible rows
+
+    friend constexpr bool operator==(BoardShape, BoardShape) = default;
+};
+
+// Layout for a board of `board` cells showing up to `previews` upcoming
+// pieces (0 = the NEXT panel shows that previews are off).
+[[nodiscard]] Layout computeLayout(TerminalSize terminal, BoardShape board = {}, int previews = 5);
 
 }  // namespace tetromino::tui

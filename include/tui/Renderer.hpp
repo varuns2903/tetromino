@@ -32,7 +32,8 @@ class Renderer {
 public:
     Renderer(Theme theme, ColorMode mode);
 
-    // Recompute layout and force a full repaint on the next present().
+    // New terminal size: layout is recomputed and the next present()
+    // repaints everything.
     void resize(TerminalSize size);
     // Force a full repaint (e.g. after the terminal was suspended).
     void invalidate() { fullRepaint_ = true; }
@@ -41,21 +42,27 @@ public:
     // Returns false if writing to the terminal failed.
     bool present(Terminal& terminal);
 
+    // The playfield layout for this state's board size and rules (computed
+    // on demand and cached).
+    const Layout& layoutFor(const core::GameState& state);
+    // The layout used by the most recent render().
     [[nodiscard]] const Layout& layout() const { return layout_; }
     // For tests / debugging: the most recently rendered frame.
     [[nodiscard]] const ScreenBuffer& frame() const { return back_; }
 
 private:
-    void drawTooSmall();
+    void drawTooSmall(TerminalSize minimum);
     void drawStartScreen(const core::GameState& state);
+    void drawSetupMenu(const core::GameState& state, int y);
     void drawPlayfield(const core::GameState& state);
     void drawBoard(const core::GameState& state, bool hideContents);
     void drawHold(const core::GameState& state);
     void drawStats(const core::GameState& state);
-    void drawKeys();
+    void drawKeys(const core::GameState& state);
     void drawNext(const core::GameState& state);
     void drawMessage(const core::GameState& state);
     void drawPauseOverlay();
+    void drawKeyHint(int x, int y, std::string_view key, std::string_view action);
     void drawGameOverOverlay(const core::GameState& state);
 
     // Draw one board cell at board-relative (col, row) of the visible area.
@@ -67,7 +74,11 @@ private:
 
     Theme theme_;
     ColorMode mode_;
+    TerminalSize terminal_{};
     Layout layout_;
+    bool layoutValid_ = false;
+    BoardShape layoutShape_{};
+    int layoutPreviews_ = -1;
     ScreenBuffer front_;
     ScreenBuffer back_;
     std::string output_;  // reused every frame to avoid reallocating

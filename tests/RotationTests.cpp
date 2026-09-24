@@ -165,7 +165,7 @@ TEST(i_kicks_off_right_wall) {
     CHECK(r->rotation == Rotation::Spawn);
     CHECK(r->position == (Point{6, 10}));
     for (const Point c : game::cellsOf(*r)) {
-        CHECK(c.x >= 0 && c.x < Board::kWidth);
+        CHECK(c.x >= 0 && c.x < Board::kDefaultWidth);
     }
 }
 
@@ -184,7 +184,7 @@ TEST(t_kicks_up_off_floor) {
     // Flat T resting on the floor. Rotating to R would poke a cell below the
     // floor; SRS test 3 for 0->R is (-1, +1 up), i.e. one left and one up.
     const Board board;
-    const int y = Board::kHeight - 2;  // box row 1 on the bottom row
+    const int y = Board::kDefaultHeight - 2;  // box row 1 on the bottom row
     const Piece p{PieceType::T, Rotation::Spawn, {4, y}};
     CHECK(game::fits(board, p));
     CHECK(!game::fits(board, Piece{PieceType::T, Rotation::Right, {4, y}}));
@@ -198,8 +198,8 @@ TEST(rotation_fails_when_every_kick_collides) {
     // Fill everything except the piece's own cells.
     Board board;
     const Piece p{PieceType::T, Rotation::Spawn, {4, 10}};
-    for (int y = 0; y < Board::kHeight; ++y) {
-        for (int x = 0; x < Board::kWidth; ++x) {
+    for (int y = 0; y < Board::kDefaultHeight; ++y) {
+        for (int x = 0; x < Board::kDefaultWidth; ++x) {
             board.set({x, y}, core::CellType::Z);
         }
     }
@@ -215,7 +215,7 @@ TEST(rotation_uses_first_fitting_kick_in_table_order) {
     // don't. The result must be the *first* fitting entry in table order.
     Board board;
     const Piece p{PieceType::T, Rotation::Spawn, {3, 15}};
-    for (int x = 0; x < Board::kWidth; ++x) {
+    for (int x = 0; x < Board::kDefaultWidth; ++x) {
         board.set({x, 17}, core::CellType::Z);
     }
     board.set({3, 17}, core::CellType::Empty);

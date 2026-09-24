@@ -3,7 +3,6 @@
 #include <algorithm>
 
 #include "core/GameState.hpp"
-#include "game/Board.hpp"
 
 namespace tetromino::tui {
 
@@ -24,23 +23,23 @@ struct Scale {
 
 constexpr Scale kScales[] = {{4, 2}, {2, 1}};  // try the big one first
 
-TerminalSize requiredSize(Scale s) {
-    const int boardW = game::Board::kWidth * s.cellWidth + 2;
-    const int boardH = game::Board::kVisibleHeight * s.cellHeight + 2;
+TerminalSize requiredSize(Scale s, BoardShape board) {
+    const int boardW = board.columns * s.cellWidth + 2;
+    const int boardH = board.rows * s.cellHeight + 2;
     const int minSideH = kHoldHeight + kStatsHeight;
     return {kSideWidth + kGap + boardW + kGap + kSideWidth, std::max(boardH, minSideH)};
 }
 
 }  // namespace
 
-Layout computeLayout(TerminalSize terminal) {
+Layout computeLayout(TerminalSize terminal, BoardShape board, int previews) {
     Layout layout;
     layout.terminal = terminal;
-    layout.minimum = requiredSize(kScales[1]);
+    layout.minimum = requiredSize(kScales[1], board);
 
     const Scale* chosen = nullptr;
     for (const Scale& s : kScales) {
-        const TerminalSize need = requiredSize(s);
+        const TerminalSize need = requiredSize(s, board);
         if (terminal.columns >= need.columns && terminal.rows >= need.rows) {
             chosen = &s;
             break;
@@ -54,13 +53,13 @@ Layout computeLayout(TerminalSize terminal) {
     layout.cellWidth = chosen->cellWidth;
     layout.cellHeight = chosen->cellHeight;
 
-    const TerminalSize need = requiredSize(*chosen);
+    const TerminalSize need = requiredSize(*chosen, board);
     const int x0 = (terminal.columns - need.columns) / 2;
     const int y0 = (terminal.rows - need.rows) / 2;
     layout.content = {x0, y0, need.columns, need.rows};
 
-    const int boardW = game::Board::kWidth * chosen->cellWidth + 2;
-    const int boardH = game::Board::kVisibleHeight * chosen->cellHeight + 2;
+    const int boardW = board.columns * chosen->cellWidth + 2;
+    const int boardH = board.rows * chosen->cellHeight + 2;
 
     // Left column: HOLD, SCORE, KEYS (if room).
     const Rect left{x0, y0, kSideWidth, need.rows};
@@ -78,9 +77,10 @@ Layout computeLayout(TerminalSize terminal) {
     // Right column: NEXT queue sized to what fits, message area below it.
     const int rightX = layout.board.right() + kGap;
     const int maxNextH = need.rows - 4;  // leave a few rows for the message
-    const int previews = std::clamp((maxNextH - 3) / kPreviewRows, 1, static_cast<int>(core::kPreviewCount));
-    layout.previewCount = previews;
-    layout.next = {rightX, y0, kSideWidth, 3 + previews * kPreviewRows};
+    const int fit = std::max((maxNextH - 3) / kPreviewRows, 1);
+    layout.previewCount = std::clamp(previews, 0, std::min(fit, static_cast<int>(core::kPreviewCount)));
+    const int slots = std::max(layout.previewCount, 1);  // room for "off" when previews are disabled
+    layout.next = {rightX, y0, kSideWidth, 3 + slots * kPreviewRows};
     layout.message = {rightX, layout.next.bottom(), kSideWidth, need.rows - layout.next.h};
 
     return layout;

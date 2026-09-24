@@ -16,7 +16,7 @@ using namespace std::chrono_literals;
 
 namespace {
 
-constexpr int kBottom = Board::kHeight - 1;
+constexpr int kBottom = Board::kDefaultHeight - 1;
 
 // Find a seed whose first piece is `type`, and start a game on `board`.
 Game gameStartingWith(PieceType type, const Board& board = Board{}, core::GameConfig config = {}) {
@@ -30,7 +30,7 @@ Game gameStartingWith(PieceType type, const Board& board = Board{}, core::GameCo
 }
 
 void fillRow(Board& board, int y, int gapFrom, int gapTo) {
-    for (int x = 0; x < Board::kWidth; ++x) {
+    for (int x = 0; x < Board::kDefaultWidth; ++x) {
         if (x < gapFrom || x > gapTo) {
             board.set({x, y}, core::CellType::Z);
         }
@@ -213,7 +213,7 @@ TEST(hold_swaps_after_next_piece_locks) {
     CHECK(game.state().active->type == PieceType::T);
     CHECK(game.state().held == current);
     // A swapped-in piece starts from the spawn position.
-    CHECK(game.state().active->position == game::spawnPiece(PieceType::T).position);
+    CHECK(game.state().active->position == game::spawnPiece(PieceType::T, Board::kDefaultWidth).position);
 }
 
 TEST(pause_freezes_gravity_and_ignores_moves) {
@@ -288,4 +288,195 @@ TEST(revision_changes_only_when_state_changes) {
     CHECK_EQ(game.revision(), r0);
     game.apply(Action::Start);
     CHECK(game.revision() != r0);
+}
+
+// --- Setup menu, board sizes and difficulty --------------------------------
+
+namespace {
+
+// Start a game from the menu with the given preset indices.
+Game gameFromMenu(std::size_t boardSize, std::size_t difficulty, std::uint64_t seed = 1) {
+    Game game{seed};
+    game.selectSetup(boardSize, difficulty);
+    game.apply(Action::Start);
+    return game;
+}
+
+std::size_t difficultyIndex(std::string_view name) { return *core::findDifficulty(name); }
+std::size_t sizeIndex(std::string_view name) { return *core::findBoardSize(name); }
+
+}  // namespace
+
+TEST(menu_defaults_to_classic_normal) {
+    Game game{1};
+    CHECK(game.state().setup.boardSize == core::kDefaultBoardSize);
+    CHECK(game.state().setup.difficulty == core::kDefaultDifficulty);
+    CHECK(core::kBoardSizes[core::kDefaultBoardSize].name == "Classic");
+    CHECK(core::kDifficulties[core::kDefaultDifficulty].name == "Normal");
+}
+
+TEST(menu_navigation_moves_focus_and_clamps_values) {
+    Game game{1};
+    using Field = core::Setup::Field;
+    CHECK(game.state().setup.focus == Field::BoardSize);
+    game.apply(Action::MenuRight);
+    CHECK_EQ(game.state().setup.boardSize, core::kDefaultBoardSize + 1);
+    for (int i = 0; i < 10; ++i) {
+        game.apply(Action::MenuRight);
+    }
+    CHECK_EQ(game.state().setup.boardSize, core::kBoardSizes.size() - 1);  // clamped
+    game.apply(Action::MenuDown);
+    CHECK(game.state().setup.focus == Field::Difficulty);
+    for (int i = 0; i < 10; ++i) {
+        game.apply(Action::MenuLeft);
+    }
+    CHECK_EQ(game.state().setup.difficulty, 0u);  // clamped at Easy
+    game.apply(Action::MenuUp);
+    CHECK(game.state().setup.focus == Field::BoardSize);
+    // Menu actions do nothing outside the start screen.
+    game.apply(Action::Start);
+    const auto setup = game.state().setup;
+    game.apply(Action::MenuLeft);
+    CHECK_EQ(game.state().setup.boardSize, setup.boardSize);
+}
+
+TEST(start_uses_selected_board_size) {
+    for (std::size_t i = 0; i < core::kBoardSizes.size(); ++i) {
+        const Game game = gameFromMenu(i, core::kDefaultDifficulty);
+        const auto& size = core::kBoardSizes[i];
+        CHECK_EQ(game.state().board.width(), size.width);
+        CHECK_EQ(game.state().board.visibleHeight(), size.height);
+        CHECK(game::fits(game.state().board, *game.state().active));
+    }
+}
+
+TEST(pieces_spawn_centred_on_wide_board) {
+    const Game game = gameFromMenu(sizeIndex("wide"), core::kDefaultDifficulty);
+    const auto cells = game::cellsOf(*game.state().active);
+    int lo = 99;
+    int hi = -1;
+    for (const auto c : cells) {
+        lo = std::min(lo, c.x);
+        hi = std::max(hi, c.x);
+    }
+    // Left and right margins differ by at most one column.
+    CHECK(std::abs(lo - (game.state().board.width() - 1 - hi)) <= 1);
+}
+
+TEST(lines_clear_on_non_classic_board) {
+    Board board{8, 16};
+    for (int x = 0; x < 8; ++x) {
+        if (x < 2 || x > 5) {
+            board.set({x, board.height() - 1}, core::CellType::Z);
+        }
+    }
+    // Flat I spawns centred on 8 columns: columns 2-5, exactly the gap.
+    Game game = gameStartingWith(PieceType::I, board);
+    game.apply(Action::HardDrop);
+    CHECK_EQ(game.state().stats.lines, 1);
+    finishClear(game);
+    CHECK(game.state().board.isEmpty());
+}
+
+TEST(easy_rules) {
+    const Game game = gameFromMenu(core::kDefaultBoardSize, difficultyIndex("easy"));
+    const auto& rules = game.state().rules;
+    CHECK(rules.holdEnabled);
+    CHECK(rules.ghostEnabled);
+    CHECK_EQ(rules.previewCount, 5);
+    CHECK_EQ(game.state().stats.level, 1);
+    CHECK(game.config().lockDelay == std::chrono::nanoseconds{700ms});
+}
+
+TEST(normal_rules) {
+    const Game game = gameFromMenu(core::kDefaultBoardSize, difficultyIndex("normal"));
+    CHECK(game.state().rules.holdEnabled);
+    CHECK(game.state().rules.ghostEnabled);
+    CHECK_EQ(game.state().rules.previewCount, 3);
+}
+
+TEST(hard_disables_hold_and_shows_one_preview) {
+    Game game = gameFromMenu(core::kDefaultBoardSize, difficultyIndex("hard"));
+    CHECK(!game.state().rules.holdEnabled);
+    CHECK_EQ(game.state().rules.previewCount, 1);
+    CHECK(game.state().ghost().has_value());
+    const auto before = game.state().active->type;
+    game.apply(Action::Hold);
+    CHECK(!game.state().held.has_value());
+    CHECK(game.state().active->type == before);
+}
+
+TEST(expert_hides_previews_and_ghost) {
+    const Game game = gameFromMenu(core::kDefaultBoardSize, difficultyIndex("expert"));
+    CHECK(!game.state().rules.holdEnabled);
+    CHECK_EQ(game.state().rules.previewCount, 0);
+    CHECK(!game.state().rules.ghostEnabled);
+    CHECK(!game.state().ghost().has_value());
+    CHECK(game.state().active.has_value());
+}
+
+TEST(harder_difficulties_start_higher_and_fall_faster) {
+    // Time for the first piece to fall one row, per difficulty.
+    const auto firstFall = [](std::size_t difficulty) {
+        Game game = gameFromMenu(core::kDefaultBoardSize, difficulty);
+        const int y0 = game.state().active->position.y;
+        int ms = 0;
+        while (game.state().active->position.y == y0 && ms < 5000) {
+            game.update(1ms);
+            ++ms;
+        }
+        return ms;
+    };
+    const int easy = firstFall(difficultyIndex("easy"));
+    const int normal = firstFall(difficultyIndex("normal"));
+    const int hard = firstFall(difficultyIndex("hard"));
+    const int expert = firstFall(difficultyIndex("expert"));
+    CHECK(easy > normal);
+    CHECK(normal > hard);
+    CHECK(hard > expert);
+    CHECK_EQ(normal, 1000);  // level 1 baseline
+    CHECK_EQ(easy, 1500);
+
+    CHECK_EQ(gameFromMenu(1, difficultyIndex("hard")).state().stats.level, 3);
+    CHECK_EQ(gameFromMenu(1, difficultyIndex("expert")).state().stats.level, 5);
+}
+
+TEST(restart_keeps_setup_and_menu_allows_changing_it) {
+    Game game = gameFromMenu(sizeIndex("small"), difficultyIndex("hard"));
+    game.apply(Action::Pause);
+    game.apply(Action::Restart);
+    CHECK_EQ(game.state().board.width(), 8);
+    CHECK(!game.state().rules.holdEnabled);
+
+    game.apply(Action::Pause);
+    game.apply(Action::OpenMenu);
+    CHECK(game.mode() == GameMode::StartScreen);
+    CHECK(!game.state().active);
+    game.apply(Action::MenuRight);  // Small -> Classic
+    game.apply(Action::MenuDown);
+    game.apply(Action::MenuLeft);   // Hard -> Normal
+    game.apply(Action::Start);
+    CHECK_EQ(game.state().board.width(), 10);
+    CHECK(game.state().rules.holdEnabled);
+}
+
+TEST(config_for_combines_base_and_presets) {
+    core::GameConfig base;
+    base.startLevel = 4;
+    const core::GameConfig c = core::configFor(base, sizeIndex("tall"), difficultyIndex("expert"));
+    CHECK_EQ(c.boardWidth, 10);
+    CHECK_EQ(c.boardHeight, 24);
+    CHECK_EQ(c.startLevel, 8);  // base 4 + expert bonus 4
+    CHECK(!c.holdEnabled);
+    CHECK_EQ(c.previewCount, 0);
+    // Out-of-range indices fall back to the defaults.
+    const core::GameConfig d = core::configFor(base, 99, 99);
+    CHECK_EQ(d.boardWidth, 10);
+    CHECK(d.holdEnabled);
+}
+
+TEST(preset_lookup_is_case_insensitive) {
+    CHECK(core::findDifficulty("HARD") == difficultyIndex("hard"));
+    CHECK(core::findBoardSize("Wide").has_value());
+    CHECK(!core::findDifficulty("impossible").has_value());
 }
