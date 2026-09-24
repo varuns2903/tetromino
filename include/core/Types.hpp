@@ -81,8 +81,15 @@ enum class GameMode : std::uint8_t {
     StartScreen,
     Playing,
     Paused,
+    Countdown,  // "3, 2, 1" after unpausing; the game resumes when it ends
     GameOver,
     Quit,
+};
+
+// Why a game ended.
+enum class EndReason : std::uint8_t {
+    ToppedOut,  // the stack reached the top
+    TimeUp,     // a timed mode ran out of time
 };
 
 }  // namespace tetromino::core

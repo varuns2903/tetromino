@@ -223,7 +223,7 @@ TEST(renderer_hides_disabled_features) {
     r.resize({80, 24});
     core::GameState s;
     s.mode = core::GameMode::Playing;
-    s.rules = core::Rules{false, 0, false};
+    s.rules = core::Rules{false, 0, false, std::nullopt};
     s.active = game::spawnPiece(core::PieceType::O, 10);
     r.render(s);
     const tui::Layout& l = r.layout();

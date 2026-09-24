@@ -79,6 +79,13 @@ std::variant<Options, std::string> parseOptions(int argc, const char* const* arg
                 return std::string{"--level expects a number between 1 and 30"};
             }
             options.startLevel = *level;
+        } else if (name == "--mode") {
+            const auto v = value();
+            const auto index = v ? core::findGameType(*v) : std::nullopt;
+            if (!index) {
+                return std::string{"--mode expects one of: endless, 2-minute"};
+            }
+            options.gameType = *index;
         } else if (name == "--size") {
             const auto v = value();
             const auto index = v ? core::findBoardSize(*v) : std::nullopt;
@@ -121,8 +128,9 @@ std::string usage(const char* programName) {
 
 Tetromino: a falling-block puzzle game for the Linux terminal.
 
-The start screen lets you pick a board size and a difficulty:
+The start screen lets you pick a mode, a board size and a difficulty:
 
+  Mode        Endless (until the stack tops out) · 2-Minute (score attack)
   Board       Small 8×16 · Classic 10×20 · Wide 14×20 · Tall 10×24
   Difficulty  Easy    slower gravity, hold, 5 previews, ghost, long lock delay
               Normal  standard gravity, hold, 3 previews, ghost
@@ -130,6 +138,7 @@ The start screen lets you pick a board size and a difficulty:
               Expert  much faster (+4 levels, ×0.35), no hold, no preview, no ghost
 
 Options:
+  --mode NAME      pre-select the mode: endless | 2-minute
   --size NAME      pre-select the board: small | classic | wide | tall
   --difficulty D   pre-select the difficulty: easy | normal | hard | expert
   --level N        start at level N (1-30, default 1; difficulty may add more)

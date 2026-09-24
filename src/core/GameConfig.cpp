@@ -17,7 +17,7 @@ Duration standardGravity(int level) {
     return std::chrono::duration_cast<Duration>(std::chrono::duration<double>(clamped));
 }
 
-GameConfig configFor(const GameConfig& base, std::size_t boardSize, std::size_t difficulty) {
+GameConfig configFor(const GameConfig& base, std::size_t boardSize, std::size_t difficulty, std::size_t gameType) {
     const BoardSize& size = kBoardSizes[boardSize < kBoardSizes.size() ? boardSize : kDefaultBoardSize];
     const Difficulty& d = kDifficulties[difficulty < kDifficulties.size() ? difficulty : kDefaultDifficulty];
 
@@ -30,6 +30,12 @@ GameConfig configFor(const GameConfig& base, std::size_t boardSize, std::size_t 
     config.previewCount = d.previewCount;
     config.ghostEnabled = d.ghostEnabled;
     config.lockDelay = d.lockDelay;
+    const GameType& type = kGameTypes[gameType < kGameTypes.size() ? gameType : kDefaultGameType];
+    if (type.timeLimit) {
+        config.timeLimit = std::chrono::duration_cast<Duration>(*type.timeLimit);
+    } else {
+        config.timeLimit.reset();
+    }
     return config;
 }
 

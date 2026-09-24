@@ -35,8 +35,8 @@ public:
     void startWithBoard(const game::Board& board);
 
     // Pre-select the start-screen menu entries (indices into kBoardSizes /
-    // kDifficulties), e.g. from command-line flags.
-    void selectSetup(std::size_t boardSize, std::size_t difficulty);
+    // kDifficulties / kGameTypes), e.g. from command-line flags.
+    void selectSetup(std::size_t boardSize, std::size_t difficulty, std::size_t gameType = kDefaultGameType);
 
     // The rules of the game in progress (base config + chosen presets).
     [[nodiscard]] const GameConfig& config() const { return config_; }
@@ -50,11 +50,15 @@ public:
 
     // True if update() does anything right now. When false (menus, pause,
     // game over) the front end can sleep until the next key press.
-    [[nodiscard]] bool needsUpdates() const { return state_.mode == GameMode::Playing; }
+    [[nodiscard]] bool needsUpdates() const {
+        return state_.mode == GameMode::Playing || state_.mode == GameMode::Countdown;
+    }
 
 private:
     void startNewGame();
     void openMenu();
+    void resume();                   // from Paused: countdown, then Playing
+    void endGame(EndReason reason);
     void applyStartScreen(Action action);
     void applyPlaying(Action action);
 

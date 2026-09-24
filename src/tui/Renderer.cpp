@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <string_view>
 
@@ -145,6 +146,10 @@ void Renderer::render(const GameState& state) {
     case GameMode::Paused:
         drawPlayfield(state);
         drawPauseOverlay();
+        break;
+    case GameMode::Countdown:
+        drawPlayfield(state);
+        drawCountdownOverlay(state);
         break;
     case GameMode::GameOver:
         drawPlayfield(state);
@@ -669,6 +674,14 @@ void Renderer::drawKeyHint(int x, int y, std::string_view key, std::string_view 
     keyStyle.bg = theme_.overlay().bg;
     back_.text(x, y, key, keyStyle);
     back_.text(x + 3, y, action, theme_.overlay());
+}
+
+void Renderer::drawCountdownOverlay(const GameState& state) {
+    const auto seconds = std::chrono::ceil<std::chrono::seconds>(state.countdown).count();
+    const Rect in = drawOverlayBox(3, "");
+    NumberBuffer buf{};
+    const std::string_view n = formatInt(buf, static_cast<std::uint64_t>(std::max<long long>(seconds, 1)));
+    drawCentred(back_, in.x, in.w, in.y + 1, n, theme_.overlayFrame());
 }
 
 void Renderer::drawPauseOverlay() {

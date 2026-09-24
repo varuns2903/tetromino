@@ -19,9 +19,10 @@ Game::Game(std::uint64_t seed, GameConfig config)
     refreshPreview();
 }
 
-void Game::selectSetup(std::size_t boardSize, std::size_t difficulty) {
+void Game::selectSetup(std::size_t boardSize, std::size_t difficulty, std::size_t gameType) {
     state_.setup.boardSize = std::min(boardSize, kBoardSizes.size() - 1);
     state_.setup.difficulty = std::min(difficulty, kDifficulties.size() - 1);
+    state_.setup.gameType = std::min(gameType, kGameTypes.size() - 1);
     touch();
 }
 
@@ -43,10 +44,15 @@ void Game::apply(Action action) {
     case GameMode::Playing:
         applyPlaying(action);
         break;
+    case GameMode::Countdown:
+        if (action == Action::Pause) {  // changed their mind: pause again
+            state_.mode = GameMode::Paused;
+            touch();
+        }
+        break;
     case GameMode::Paused:
         if (action == Action::Pause) {
-            state_.mode = GameMode::Playing;
-            touch();
+            resume();
         } else if (action == Action::Restart) {
             startNewGame();
         } else if (action == Action::OpenMenu) {
@@ -78,26 +84,47 @@ void Game::applyStartScreen(Action action) {
     };
     switch (action) {
     case Action::MenuUp:
-    case Action::MenuDown:
-        setup.focus = setup.focus == Setup::Field::BoardSize ? Setup::Field::Difficulty : Setup::Field::BoardSize;
+    case Action::MenuDown: {
+        // Wrap around between the rows.
+        const int count = Setup::kFieldCount;
+        const int delta = action == Action::MenuDown ? 1 : count - 1;
+        setup.focus = static_cast<Setup::Field>((static_cast<int>(setup.focus) + delta) % count);
         break;
+    }
     case Action::MenuLeft:
     case Action::MenuRight: {
         const int delta = action == Action::MenuLeft ? -1 : +1;
-        if (setup.focus == Setup::Field::BoardSize) {
-            step(setup.boardSize, kBoardSizes.size(), delta);
-        } else {
-            step(setup.difficulty, kDifficulties.size(), delta);
+        switch (setup.focus) {
+        case Setup::Field::GameType: step(setup.gameType, kGameTypes.size(), delta); break;
+        case Setup::Field::BoardSize: step(setup.boardSize, kBoardSizes.size(), delta); break;
+        case Setup::Field::Difficulty: step(setup.difficulty, kDifficulties.size(), delta); break;
         }
         break;
     }
     case Action::Start:
-        config_ = configFor(base_, setup.boardSize, setup.difficulty);
+        config_ = configFor(base_, setup.boardSize, setup.difficulty, setup.gameType);
         startNewGame();
         return;
     default:
         return;
     }
+    touch();
+}
+
+void Game::resume() {
+    if (config_.resumeCountdown <= Duration::zero()) {
+        state_.mode = GameMode::Playing;
+    } else {
+        state_.mode = GameMode::Countdown;
+        state_.countdown = config_.resumeCountdown;
+    }
+    touch();
+}
+
+void Game::endGame(EndReason reason) {
+    state_.mode = GameMode::GameOver;
+    state_.endReason = reason;
+    state_.active.reset();
     touch();
 }
 
@@ -134,9 +161,34 @@ void Game::applyPlaying(Action action) {
 // ---------------------------------------------------------------------------
 
 void Game::update(Duration dt) {
+    if (state_.mode == GameMode::Countdown) {
+        state_.countdown -= dt;
+        if (state_.countdown <= Duration::zero()) {
+            state_.countdown = Duration::zero();
+            state_.mode = GameMode::Playing;
+        }
+        touch();
+        return;
+    }
     if (state_.mode != GameMode::Playing) {
         return;
     }
+
+    // The play clock. Front ends show it to a tenth of a second, so only
+    // report a change when that digit changes.
+    constexpr auto kTick = std::chrono::milliseconds{100};
+    const auto ticksBefore = state_.stats.playTime / kTick;
+    state_.stats.playTime += dt;
+    if (state_.stats.playTime / kTick != ticksBefore) {
+        touch();
+    }
+    if (state_.rules.timeLimit && state_.stats.playTime >= *state_.rules.timeLimit) {
+        state_.stats.playTime = *state_.rules.timeLimit;
+        state_.clearingRows.clear();
+        endGame(EndReason::TimeUp);
+        return;
+    }
+
     // Keep feedback ("QUAD +800") ageing so front ends can fade it out.
     if (state_.feedback.id != 0 && state_.feedback.age < kFeedbackDuration) {
         state_.feedback.age += dt;
@@ -201,7 +253,9 @@ void Game::updateLockDelay(Duration dt) {
 void Game::startNewGame() {
     state_.board = Board{config_.boardWidth, config_.boardHeight};
     state_.rules = Rules{config_.holdEnabled, std::clamp(config_.previewCount, 0, static_cast<int>(kPreviewCount)),
-                         config_.ghostEnabled};
+                         config_.ghostEnabled, config_.timeLimit};
+    state_.countdown = Duration::zero();
+    state_.endReason = EndReason::ToppedOut;
     state_.active.reset();
     state_.held.reset();
     state_.holdAvailable = true;
@@ -223,8 +277,7 @@ void Game::startWithBoard(const game::Board& board) {
     state_.board = board;
     // The first piece was spawned onto an empty board; re-check it.
     if (state_.active && !game::fits(state_.board, *state_.active)) {
-        state_.active.reset();
-        state_.mode = GameMode::GameOver;
+        endGame(EndReason::ToppedOut);
     }
 }
 
@@ -253,8 +306,7 @@ bool Game::spawn(PieceType type) {
 
     if (!game::fits(state_.board, piece)) {
         // "Block out": the stack reaches the spawn position.
-        state_.active.reset();
-        state_.mode = GameMode::GameOver;
+        endGame(EndReason::ToppedOut);
         return false;
     }
     state_.active = piece;
@@ -276,7 +328,7 @@ void Game::lockActivePiece() {
 
     if (!anyVisible) {
         // "Lock out": the piece locked entirely above the visible field.
-        state_.mode = GameMode::GameOver;
+        endGame(EndReason::ToppedOut);
         return;
     }
 

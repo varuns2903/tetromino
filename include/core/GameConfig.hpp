@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <optional>
 
 #include "game/Board.hpp"
 #include "game/Scoring.hpp"
@@ -45,14 +46,21 @@ struct GameConfig {
     // Pause after completing lines, used for the clear animation.
     Duration lineClearDelay = std::chrono::milliseconds{280};
 
+    // "3, 2, 1" before play resumes after a pause (zero: resume at once).
+    Duration resumeCountdown = std::chrono::seconds{3};
+
+    // Timed modes: the game ends after this much playing time.
+    std::optional<Duration> timeLimit;
+
     GravityCurve gravity = &standardGravity;
 
     game::ScoringRules scoring{};
 };
 
-// `base` with the board size and difficulty preset at the given indices
-// (into kBoardSizes / kDifficulties) applied. Out-of-range indices fall back
-// to the defaults.
-[[nodiscard]] GameConfig configFor(const GameConfig& base, std::size_t boardSize, std::size_t difficulty);
+// `base` with the board size, difficulty and game type presets at the given
+// indices (into kBoardSizes / kDifficulties / kGameTypes) applied.
+// Out-of-range indices fall back to the defaults.
+[[nodiscard]] GameConfig configFor(const GameConfig& base, std::size_t boardSize, std::size_t difficulty,
+                                   std::size_t gameType = 0);
 
 }  // namespace tetromino::core

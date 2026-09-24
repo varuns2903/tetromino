@@ -66,6 +66,7 @@ private:
     void drawNext(const core::GameState& state);
     void drawMessage(const core::GameState& state);
     void drawPauseOverlay();
+    void drawCountdownOverlay(const core::GameState& state);
     void drawKeyHint(int x, int y, std::string_view key, std::string_view action);
     void drawGameOverOverlay(const core::GameState& state);
 

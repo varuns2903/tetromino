@@ -51,6 +51,7 @@ const char* modeName(core::GameMode mode) {
     case core::GameMode::StartScreen: return "start";
     case core::GameMode::Playing: return "playing";
     case core::GameMode::Paused: return "paused";
+    case core::GameMode::Countdown: return "countdown";
     case core::GameMode::GameOver: return "game-over";
     case core::GameMode::Quit: return "quit";
     }
@@ -71,7 +72,7 @@ RunSummary Application::run() {
     core::GameConfig config;
     config.startLevel = options_.startLevel;
     core::Game game{seed, config};
-    game.selectSetup(options_.boardSize, options_.difficulty);
+    game.selectSetup(options_.boardSize, options_.difficulty, options_.gameType);
 
     tui::Terminal terminal;
     tui::Input input{terminal};
@@ -83,7 +84,8 @@ RunSummary Application::run() {
         renderer.resize(size);
         logger_.debug(std::format("resize {}x{} fits={}", size.columns, size.rows, renderer.layout().fits));
         // The game can't be seen on the "too small" screen; don't let it run.
-        if (game.mode() == core::GameMode::Playing && !renderer.layoutFor(game.state()).fits) {
+        if ((game.mode() == core::GameMode::Playing || game.mode() == core::GameMode::Countdown) &&
+            !renderer.layoutFor(game.state()).fits) {
             game.apply(core::Action::Pause);
         }
     };
@@ -128,7 +130,7 @@ RunSummary Application::run() {
         // 3. Input -> actions.
         for (const tui::KeyEvent& event : events) {
             if (event.key == tui::Key::Suspend || event.key == tui::Key::FocusLost) {
-                if (game.mode() == core::GameMode::Playing) {
+                if (game.mode() == core::GameMode::Playing || game.mode() == core::GameMode::Countdown) {
                     game.apply(core::Action::Pause);
                 }
                 if (event.key == tui::Key::Suspend) {

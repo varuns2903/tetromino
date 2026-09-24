@@ -14,6 +14,21 @@
 
 namespace tetromino::core {
 
+// What you're playing for.
+struct GameType {
+    std::string_view name;
+    std::string_view summary;  // one line for the start screen
+    // Timed modes end when this much playing time has passed.
+    std::optional<std::chrono::seconds> timeLimit;
+};
+
+inline constexpr std::array<GameType, 2> kGameTypes{{
+    {"Endless", "play until the stack reaches the top", std::nullopt},
+    {"2-Minute", "score as much as you can in 2:00", std::chrono::seconds{120}},
+}};
+
+inline constexpr std::size_t kDefaultGameType = 0;  // Endless
+
 struct BoardSize {
     std::string_view name;
     int width;
@@ -54,7 +69,8 @@ inline constexpr std::array<Difficulty, 4> kDifficulties{{
 
 inline constexpr std::size_t kDefaultDifficulty = 1;  // Normal
 
-// Case-insensitive lookup by name (for --size / --difficulty).
+// Lookup by name for command-line flags; case and hyphens are ignored.
+[[nodiscard]] std::optional<std::size_t> findGameType(std::string_view name);
 [[nodiscard]] std::optional<std::size_t> findBoardSize(std::string_view name);
 [[nodiscard]] std::optional<std::size_t> findDifficulty(std::string_view name);
 

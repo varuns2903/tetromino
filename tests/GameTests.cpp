@@ -231,6 +231,34 @@ TEST(pause_freezes_gravity_and_ignores_moves) {
     game.apply(Action::HardDrop);
     CHECK(*game.state().active == before);
     game.apply(Action::Pause);
+    // Resuming counts down first; the piece still doesn't move meanwhile.
+    CHECK(game.mode() == GameMode::Countdown);
+    CHECK(game.needsUpdates());
+    game.apply(Action::MoveLeft);
+    game.update(2900ms);
+    CHECK(game.mode() == GameMode::Countdown);
+    CHECK(*game.state().active == before);
+    game.update(200ms);
+    CHECK(game.mode() == GameMode::Playing);
+}
+
+TEST(pause_during_countdown_pauses_again) {
+    Game game = gameStartingWith(PieceType::T);
+    game.apply(Action::Pause);
+    game.apply(Action::Pause);
+    game.update(1s);
+    game.apply(Action::Pause);
+    CHECK(game.mode() == GameMode::Paused);
+    game.apply(Action::Pause);
+    CHECK(game.state().countdown == core::Duration{3s});  // full countdown again
+}
+
+TEST(countdown_can_be_disabled) {
+    core::GameConfig config;
+    config.resumeCountdown = core::Duration::zero();
+    Game game = gameStartingWith(PieceType::T, Board{}, config);
+    game.apply(Action::Pause);
+    game.apply(Action::Pause);
     CHECK(game.mode() == GameMode::Playing);
 }
 
@@ -322,6 +350,11 @@ TEST(menu_defaults_to_classic_normal) {
 TEST(menu_navigation_moves_focus_and_clamps_values) {
     Game game{1};
     using Field = core::Setup::Field;
+    CHECK(game.state().setup.focus == Field::GameType);
+    game.apply(Action::MenuRight);
+    CHECK_EQ(game.state().setup.gameType, 1u);  // 2-Minute
+    game.apply(Action::MenuLeft);
+    game.apply(Action::MenuDown);
     CHECK(game.state().setup.focus == Field::BoardSize);
     game.apply(Action::MenuRight);
     CHECK_EQ(game.state().setup.boardSize, core::kDefaultBoardSize + 1);
@@ -337,6 +370,11 @@ TEST(menu_navigation_moves_focus_and_clamps_values) {
     CHECK_EQ(game.state().setup.difficulty, 0u);  // clamped at Easy
     game.apply(Action::MenuUp);
     CHECK(game.state().setup.focus == Field::BoardSize);
+    game.apply(Action::MenuDown);
+    game.apply(Action::MenuDown);  // wraps from the last row to the first
+    CHECK(game.state().setup.focus == Field::GameType);
+    game.apply(Action::MenuUp);    // and back
+    CHECK(game.state().setup.focus == Field::Difficulty);
     // Menu actions do nothing outside the start screen.
     game.apply(Action::Start);
     const auto setup = game.state().setup;
@@ -456,8 +494,9 @@ TEST(restart_keeps_setup_and_menu_allows_changing_it) {
     game.apply(Action::OpenMenu);
     CHECK(game.mode() == GameMode::StartScreen);
     CHECK(!game.state().active);
+    game.apply(Action::MenuDown);   // mode -> board
     game.apply(Action::MenuRight);  // Small -> Classic
-    game.apply(Action::MenuDown);
+    game.apply(Action::MenuDown);   // board -> difficulty
     game.apply(Action::MenuLeft);   // Hard -> Normal
     game.apply(Action::Start);
     CHECK_EQ(game.state().board.width(), 10);
@@ -483,4 +522,68 @@ TEST(preset_lookup_is_case_insensitive) {
     CHECK(core::findDifficulty("HARD") == difficultyIndex("hard"));
     CHECK(core::findBoardSize("Wide").has_value());
     CHECK(!core::findDifficulty("impossible").has_value());
+}
+
+// --- Game types, play time --------------------------------------------------
+
+TEST(play_time_counts_only_while_playing) {
+    Game game = gameStartingWith(PieceType::T);
+    game.update(1500ms);
+    CHECK(game.state().stats.playTime == core::Duration{1500ms});
+    game.apply(Action::Pause);
+    game.update(10s);
+    game.apply(Action::Pause);
+    game.update(3s);  // countdown
+    CHECK(game.state().stats.playTime == core::Duration{1500ms});
+}
+
+TEST(endless_has_no_time_limit) {
+    Game game{1};
+    game.apply(Action::Start);
+    CHECK(!game.state().rules.timeLimit.has_value());
+    CHECK(game.state().timeLeft() == core::Duration::zero());
+}
+
+TEST(two_minute_mode_ends_when_time_is_up) {
+    Game game{1};
+    game.selectSetup(core::kDefaultBoardSize, core::kDefaultDifficulty, *core::findGameType("2-minute"));
+    game.apply(Action::Start);
+    CHECK(game.state().rules.timeLimit == core::Duration{120s});
+    // One big step: at most one piece lands, so the stack can't top out.
+    game.update(119s);
+    CHECK(game.mode() == GameMode::Playing);
+    CHECK(game.state().timeLeft() == core::Duration{1s});
+    game.update(2s);
+    CHECK(game.mode() == GameMode::GameOver);
+    CHECK(game.state().endReason == core::EndReason::TimeUp);
+    CHECK(game.state().stats.playTime == core::Duration{120s});
+    CHECK(game.state().timeLeft() == core::Duration::zero());
+}
+
+TEST(topping_out_records_the_reason) {
+    Game game{5};
+    game.apply(Action::Start);
+    while (game.mode() == GameMode::Playing) {
+        game.apply(Action::HardDrop);
+        game.update(1s);
+    }
+    CHECK(game.state().endReason == core::EndReason::ToppedOut);
+}
+
+TEST(game_type_names_accept_variants) {
+    CHECK(core::findGameType("endless") == 0u);
+    CHECK(core::findGameType("2-Minute") == 1u);
+    CHECK(core::findGameType("2minute") == 1u);
+    CHECK(!core::findGameType("marathon").has_value());
+}
+
+TEST(clear_counts_by_type) {
+    Board board;
+    fillRow(board, kBottom, 3, 6);
+    board.set({9, kBottom - 1}, core::CellType::Z);
+    Game game = gameStartingWith(PieceType::I, board);
+    game.apply(Action::HardDrop);
+    CHECK_EQ(game.state().stats.singles, 1);
+    CHECK_EQ(game.state().stats.doubles, 0);
+    CHECK_EQ(game.state().stats.quads, 0);
 }

@@ -191,7 +191,8 @@ std::optional<core::Action> actionFor(const KeyEvent& event, core::GameMode mode
     // Escape toggles pause during a game, and backs out (quits) from the
     // start and game-over screens.
     if (event.key == Key::Escape) {
-        return mode == GameMode::Playing || mode == GameMode::Paused ? Action::Pause : Action::Quit;
+        return mode == GameMode::Playing || mode == GameMode::Paused || mode == GameMode::Countdown ? Action::Pause
+                                                                                                   : Action::Quit;
     }
 
     switch (mode) {
@@ -245,6 +246,12 @@ std::optional<core::Action> actionFor(const KeyEvent& event, core::GameMode mode
         }
         if (ch == 'm') {
             return Action::OpenMenu;
+        }
+        return std::nullopt;
+
+    case GameMode::Countdown:
+        if (ch == 'p') {
+            return Action::Pause;  // pause again
         }
         return std::nullopt;
 

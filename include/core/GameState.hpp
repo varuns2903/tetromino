@@ -6,6 +6,7 @@
 // renderer needs is in here, so an ANSI renderer, an ncurses renderer or a
 // test can all consume the same data without touching the engine.
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -35,6 +36,9 @@ struct Stats {
     int spins = 0;          // spin placements (with or without lines)
     int perfectClears = 0;
     int maxCombo = 0;       // longest chain of consecutive clearing pieces
+
+    // Time spent actually playing (not paused, not counting down).
+    Duration playTime{};
 };
 
 // The most recent scoring event, so a front end can show "QUAD  +800" and
@@ -60,14 +64,17 @@ struct Rules {
     bool holdEnabled = true;
     int previewCount = static_cast<int>(kPreviewCount);
     bool ghostEnabled = true;
+    std::optional<Duration> timeLimit;  // timed modes
 };
 
 // The start-screen setup menu: which row has focus and what's selected.
 struct Setup {
-    enum class Field : std::uint8_t { BoardSize, Difficulty };
-    static constexpr int kFieldCount = 2;
+    // Menu rows, top to bottom.
+    enum class Field : std::uint8_t { GameType, BoardSize, Difficulty };
+    static constexpr int kFieldCount = 3;
 
-    Field focus = Field::BoardSize;
+    Field focus = Field::GameType;
+    std::size_t gameType = kDefaultGameType;      // index into kGameTypes
     std::size_t boardSize = kDefaultBoardSize;    // index into kBoardSizes
     std::size_t difficulty = kDefaultDifficulty;  // index into kDifficulties
 };
@@ -89,6 +96,16 @@ struct GameState {
 
     Stats stats;
     Feedback feedback;
+
+    // GameMode::Countdown: time left before play resumes.
+    Duration countdown{};
+    // GameMode::GameOver: why it ended.
+    EndReason endReason = EndReason::ToppedOut;
+
+    // Timed modes: playing time left (zero if the mode isn't timed).
+    [[nodiscard]] Duration timeLeft() const {
+        return rules.timeLimit ? std::max(Duration::zero(), *rules.timeLimit - stats.playTime) : Duration::zero();
+    }
 
     // Rows being cleared right now. While non-empty the rows are still on the
     // board (so they can be animated) and no piece is active.
