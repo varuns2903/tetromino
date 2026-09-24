@@ -1,5 +1,8 @@
 # Tetromino
 
+[![CI](https://github.com/varuns2903/tetromino/actions/workflows/ci.yml/badge.svg)](https://github.com/varuns2903/tetromino/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A falling-block puzzle game for the Linux terminal, written in C++20 with
 **no TUI framework**: just
 `termios`, `poll()`, ANSI escape sequences and the standard library.

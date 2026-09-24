@@ -34,7 +34,7 @@ jobs:
             cmake_flags: -DTETROMINO_SANITIZE=ON
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install toolchain
         run: |
