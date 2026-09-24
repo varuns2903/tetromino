@@ -29,6 +29,7 @@
 #include "tui/Input.hpp"
 #include "tui/Renderer.hpp"
 #include "tui/Terminal.hpp"
+#include "util/HighScores.hpp"
 #include "util/Logger.hpp"
 #include "util/Random.hpp"
 
@@ -45,6 +46,18 @@ constexpr std::chrono::milliseconds kIdleWait{1000};
 // heavily loaded machine) we'd rather the game briefly slow down than have a
 // piece teleport and lock in one frame.
 constexpr std::chrono::milliseconds kMaxStep{100};
+
+// The high-score key for a setup: preset names, not indices.
+struct SetupNames {
+    std::string_view mode;
+    std::string_view board;
+    std::string_view difficulty;
+};
+
+SetupNames namesOf(const core::Setup& setup) {
+    return {core::kGameTypes[setup.gameType].name, core::kBoardSizes[setup.boardSize].name,
+            core::kDifficulties[setup.difficulty].name};
+}
 
 const char* modeName(core::GameMode mode) {
     switch (mode) {
@@ -68,6 +81,15 @@ RunSummary Application::run() {
     const tui::ColorMode colorMode = options_.colorMode.value_or(tui::detectColorMode());
     logger_.info(std::format("starting: seed={} level={} colorMode={} fps={}", seed, options_.startLevel,
                              static_cast<int>(colorMode), options_.fps));
+
+    util::HighScores scores{util::HighScores::defaultPath()};
+    const auto bestFor = [&scores](const core::Setup& setup) -> std::optional<std::uint64_t> {
+        const SetupNames n = namesOf(setup);
+        if (const auto r = scores.best(n.mode, n.board, n.difficulty)) {
+            return r->score;
+        }
+        return std::nullopt;
+    };
 
     core::GameConfig config;
     config.startLevel = options_.startLevel;
@@ -102,13 +124,20 @@ RunSummary Application::run() {
     std::uint64_t drawnRevision = std::numeric_limits<std::uint64_t>::max();
     bool forceRender = true;
     core::GameMode lastMode = game.mode();
+    tui::HudInfo hud;
+    tui::HudInfo drawnHud;
 
     while (game.mode() != core::GameMode::Quit && !terminal.quitRequested()) {
         // 1. Render, only if something visible changed. This comes first so
         //    the result of the previous iteration is on screen before we
         //    (possibly) sleep.
-        if (forceRender || game.revision() != drawnRevision) {
-            renderer.render(game.state());
+        hud.best = bestFor(game.state().setup);
+        if (game.mode() != core::GameMode::GameOver) {
+            hud.newBest = false;
+        }
+        if (forceRender || game.revision() != drawnRevision || hud != drawnHud) {
+            renderer.render(game.state(), hud);
+            drawnHud = hud;
             if (!renderer.present(terminal)) {
                 logger_.error("terminal write failed; exiting");
                 break;
@@ -135,7 +164,7 @@ RunSummary Application::run() {
                 }
                 if (event.key == tui::Key::Suspend) {
                     logger_.info("suspend");
-                    renderer.render(game.state());
+                    renderer.render(game.state(), hud);
                     renderer.present(terminal);
                     terminal.suspend();  // returns after `fg`
                     logger_.info("resume");
@@ -169,6 +198,15 @@ RunSummary Application::run() {
             if (game.mode() == core::GameMode::GameOver) {
                 const core::Stats& s = game.state().stats;
                 logger_.info(std::format("game over: score={} lines={} level={}", s.score, s.lines, s.level));
+                const SetupNames n = namesOf(game.state().setup);
+                const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(s.playTime).count();
+                std::string error;
+                hud.newBest = scores.submit({std::string{n.mode}, std::string{n.board}, std::string{n.difficulty},
+                                             s.score, s.lines, s.level, ms, util::todayIso()},
+                                            &error);
+                if (!error.empty()) {
+                    logger_.warning("high score not saved: " + error);
+                }
             }
             lastMode = game.mode();
         }

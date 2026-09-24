@@ -15,6 +15,7 @@ set(TETROMINO_ENGINE_TESTS
 set(TETROMINO_TUI_TESTS
     InputTests
     ScreenBufferTests
+    HighScoresTests
 )
 
 foreach(test_name IN LISTS TETROMINO_ENGINE_TESTS TETROMINO_TUI_TESTS)

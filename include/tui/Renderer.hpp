@@ -13,6 +13,8 @@
 // A future ncurses (or GUI, or web) front end would replace this class and
 // Terminal, and reuse everything under core/ and game/ unchanged.
 
+#include <cstdint>
+#include <optional>
 #include <string>
 
 #include "tui/Color.hpp"
@@ -29,6 +31,16 @@ namespace tetromino::tui {
 
 class Terminal;
 
+// What the front end knows that isn't part of the game state: high scores
+// (kept by the application) and whether the game on screen is a demo.
+struct HudInfo {
+    std::optional<std::uint64_t> best;  // best score for the selected setup
+    bool newBest = false;               // game over: this game set it
+    bool attract = false;               // a demo game played by the bot
+
+    friend bool operator==(const HudInfo&, const HudInfo&) = default;
+};
+
 class Renderer {
 public:
     Renderer(Theme theme, ColorMode mode);
@@ -39,7 +51,7 @@ public:
     // Force a full repaint (e.g. after the terminal was suspended).
     void invalidate() { fullRepaint_ = true; }
 
-    void render(const core::GameState& state);
+    void render(const core::GameState& state, const HudInfo& hud = {});
     // Returns false if writing to the terminal failed.
     bool present(Terminal& terminal);
 
@@ -79,6 +91,7 @@ private:
 
     Theme theme_;
     ColorMode mode_;
+    HudInfo hud_;  // for the frame being rendered
     TerminalSize terminal_{};
     Layout layout_;
     bool layoutValid_ = false;

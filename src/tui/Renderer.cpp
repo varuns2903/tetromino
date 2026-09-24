@@ -85,7 +85,7 @@ constexpr int kLogoHeight = 5;
 
 // Start screen geometry.
 constexpr int kMenuWidth = 46;
-constexpr int kMenuHeight = 11;
+constexpr int kMenuHeight = 13;
 constexpr TerminalSize kStartScreenMinimum{kMenuWidth + 4, kLogoHeight + 3 + 1 + kMenuHeight};
 
 // Width in pixels, including one blank pixel between letters.
@@ -122,7 +122,8 @@ const Layout& Renderer::layoutFor(const GameState& state) {
     return layout_;
 }
 
-void Renderer::render(const GameState& state) {
+void Renderer::render(const GameState& state, const HudInfo& hud) {
+    hud_ = hud;
     back_.clear();
     if (state.mode == GameMode::StartScreen) {
         if (terminal_.columns < kStartScreenMinimum.columns || terminal_.rows < kStartScreenMinimum.rows) {
@@ -246,9 +247,18 @@ void Renderer::drawStartScreen(const GameState& state) {
 
 void Renderer::drawSetupMenu(const GameState& state, int y) {
     const core::Setup& setup = state.setup;
+    const core::GameType& type = core::kGameTypes[setup.gameType];
     const core::BoardSize& size = core::kBoardSizes[setup.boardSize];
     const core::Difficulty& difficulty = core::kDifficulties[setup.difficulty];
 
+    //  0 ╔════════════════════════════════════════════╗
+    //  2 ║ › MODE         ◂  Endless              ▸   ║
+    //  3 ║      play until the stack reaches the top  ║
+    //  5 ║   BOARD        ◂  Classic  10 × 20     ▸   ║
+    //  6 ║   DIFFICULTY   ◂  Normal               ▸   ║
+    //  7 ║          hold · 3 next · ghost             ║
+    //  9 ║           BEST  12,450                     ║
+    // 11 ║  ↑↓ choose  ←→ change  ENTER start  Q quit ║
     const Rect box{(back_.width() - kMenuWidth) / 2, y, kMenuWidth, kMenuHeight};
     drawPanel(back_, box, "", PanelStyle{BorderStyle::Double, theme_.overlayFrame(), theme_.heading(), true, theme_.overlay()});
 
@@ -279,38 +289,50 @@ void Renderer::drawSetupMenu(const GameState& state, int y) {
         back_.text(box.x + kArrowRightX, ry, "▸", index + 1 < count && focused ? accent : muted);
     };
 
+    drawRow(2, core::Setup::Field::GameType, "MODE", setup.gameType, core::kGameTypes.size());
+    back_.text(box.x + kValueX, box.y + 2, type.name, value);
+    drawCentred(back_, box.x, box.w, box.y + 3, type.summary, muted);
+
     // Board size: "Classic  10 × 20"
-    drawRow(2, core::Setup::Field::BoardSize, "BOARD", setup.boardSize, core::kBoardSizes.size());
+    drawRow(5, core::Setup::Field::BoardSize, "BOARD", setup.boardSize, core::kBoardSizes.size());
     NumberBuffer a{};
     NumberBuffer b{};
-    int x = back_.text(box.x + kValueX, box.y + 2, size.name, value);
-    x = back_.text(x + 2, box.y + 2, formatInt(a, static_cast<std::uint64_t>(size.width)), muted);
-    x = back_.text(x, box.y + 2, " × ", muted);
-    back_.text(x, box.y + 2, formatInt(b, static_cast<std::uint64_t>(size.height)), muted);
+    int x = back_.text(box.x + kValueX, box.y + 5, size.name, value);
+    x = back_.text(x + 2, box.y + 5, formatInt(a, static_cast<std::uint64_t>(size.width)), muted);
+    x = back_.text(x, box.y + 5, " × ", muted);
+    back_.text(x, box.y + 5, formatInt(b, static_cast<std::uint64_t>(size.height)), muted);
 
-    // Difficulty, with a one-line summary of what it changes.
-    drawRow(4, core::Setup::Field::Difficulty, "DIFFICULTY", setup.difficulty, core::kDifficulties.size());
-    back_.text(box.x + kValueX, box.y + 4, difficulty.name, value);
-    drawCentred(back_, box.x, box.w, box.y + 5, difficulty.summary, muted);
+    drawRow(6, core::Setup::Field::Difficulty, "DIFFICULTY", setup.difficulty, core::kDifficulties.size());
+    back_.text(box.x + kValueX, box.y + 6, difficulty.name, value);
+    drawCentred(back_, box.x, box.w, box.y + 7, difficulty.summary, muted);
 
-    // Will the chosen board fit this terminal?
+    // Status line: a size warning takes priority over the best score.
     const Layout preview =
         computeLayout(terminal_, BoardShape{size.width, size.height}, difficulty.previewCount, halfBlocks_);
+    const int sy = box.y + 9;
     if (!preview.fits) {
         Style warn = theme_.warning();
         warn.bg = bg;
         NumberBuffer c{};
         NumberBuffer d{};
-        x = back_.text(box.x + kLabelX, box.y + 7, "needs a ", warn);
-        x = back_.text(x, box.y + 7, formatInt(c, static_cast<std::uint64_t>(preview.minimum.columns)), warn);
-        x = back_.text(x, box.y + 7, " × ", warn);
-        x = back_.text(x, box.y + 7, formatInt(d, static_cast<std::uint64_t>(preview.minimum.rows)), warn);
-        back_.text(x, box.y + 7, " terminal", warn);
+        x = back_.text(box.x + kLabelX, sy, "needs a ", warn);
+        x = back_.text(x, sy, formatInt(c, static_cast<std::uint64_t>(preview.minimum.columns)), warn);
+        x = back_.text(x, sy, " × ", warn);
+        x = back_.text(x, sy, formatInt(d, static_cast<std::uint64_t>(preview.minimum.rows)), warn);
+        back_.text(x, sy, " terminal", warn);
+    } else if (hud_.best) {
+        NumberBuffer c{};
+        const std::string_view best = formatThousands(c, *hud_.best);
+        const int w = 6 + displayWidth(best);
+        x = back_.text(box.x + (box.w - w) / 2, sy, "BEST  ", muted);
+        back_.text(x, sy, best, accent);
+    } else {
+        drawCentred(back_, box.x, box.w, sy, "no best score yet", muted);
     }
 
     // Footer: key hints.
     int fx = box.x + 3;
-    const int fy = box.y + 9;
+    const int fy = box.y + 11;
     fx = back_.text(fx, fy, "↑↓", accent);
     fx = back_.text(fx + 1, fy, "choose", muted);
     fx = back_.text(fx + 2, fy, "←→", accent);
@@ -557,6 +579,11 @@ void Renderer::drawStats(const GameState& state) {
     NumberBuffer buf{};
     const std::string_view score = formatThousands(buf, state.stats.score);
     back_.text(x + w - displayWidth(score), r.y + 1, score, theme_.value());
+    if (hud_.best) {
+        NumberBuffer bestBuf{};
+        drawLabelValue(back_, x, r.y + 2, w, "BEST", formatThousands(bestBuf, *hud_.best), theme_.muted(),
+                       theme_.muted());
+    }
 
     drawLabelValue(back_, x, r.y + 3, w, "LEVEL", formatInt(buf, static_cast<std::uint64_t>(state.stats.level)),
                    theme_.label(), theme_.value());

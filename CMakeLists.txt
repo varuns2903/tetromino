@@ -87,6 +87,7 @@ add_library(tetromino_tui STATIC
     src/tui/Layout.cpp
     src/tui/Renderer.cpp
     src/util/Logger.cpp
+    src/util/HighScores.cpp
 )
 target_include_directories(tetromino_tui PUBLIC include)
 target_link_libraries(tetromino_tui PUBLIC tetromino_engine PRIVATE tetromino_options)
