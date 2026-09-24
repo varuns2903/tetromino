@@ -4,8 +4,10 @@
 
 #include "TestFramework.hpp"
 #include "core/GameState.hpp"
+#include "core/Presets.hpp"
 #include "game/Piece.hpp"
 #include "tui/Layout.hpp"
+#include "tui/PixelCanvas.hpp"
 #include "tui/Renderer.hpp"
 #include "tui/ScreenBuffer.hpp"
 
@@ -24,6 +26,14 @@ std::string rowText(const ScreenBuffer& buf, int y) {
         s += ch < 0x80 ? static_cast<char>(ch) : '#';
     }
     return s;
+}
+
+// Colour of the top pixel of a cell drawn by PixelCanvas.
+tui::Color topPixel(const Cell& c) {
+    if (c.ch == U'▀') {
+        return c.style.fg;
+    }
+    return c.style.bg;  // ' ' (both halves = bg) or '▄' (top = bg)
 }
 
 bool contains(const std::string& haystack, std::string_view needle) {
@@ -115,13 +125,15 @@ TEST(layout_minimum_and_scaling) {
     CHECK(!small.fits);
     const tui::Layout normal = tui::computeLayout(small.minimum);
     CHECK(normal.fits);
-    CHECK_EQ(normal.cellWidth, 2);
+    CHECK_EQ(normal.cellPixels, 2);
     CHECK_EQ(normal.well.w, 20);
     CHECK_EQ(normal.well.h, 20);
     const tui::Layout big = tui::computeLayout({200, 60});
     CHECK(big.fits);
-    CHECK_EQ(big.cellWidth, 4);
-    CHECK_EQ(big.cellHeight, 2);
+    CHECK(big.cellPixels > 2);
+    CHECK_EQ(big.well.w, 10 * big.cellPixels);
+    CHECK_EQ(big.well.h, (20 * big.cellPixels + 1) / 2);
+    CHECK(big.board.bottom() <= 60);
     // Panels never overlap the board.
     CHECK(big.hold.right() <= big.board.x);
     CHECK(big.next.x >= big.board.right());
@@ -137,11 +149,15 @@ TEST(renderer_draws_board_pieces_and_stats) {
     r.render(s);
     const ScreenBuffer& f = r.frame();
     const tui::Layout& l = r.layout();
+    const tui::Theme theme = tui::Theme::standard();
+    CHECK_EQ(l.cellPixels, 2);
     // The O piece: columns 4-5 -> terminal columns well.x + 8 .. + 11, first row.
-    CHECK(f.at(l.well.x + 8, l.well.y).ch == U'█');
-    CHECK(f.at(l.well.x + 11, l.well.y).ch == U'█');
-    // Its ghost on the bottom row.
-    CHECK(f.at(l.well.x + 8, l.well.bottom() - 1).ch == U'░');
+    CHECK(topPixel(f.at(l.well.x + 8, l.well.y)) == theme.pieceColor(core::PieceType::O));
+    CHECK(topPixel(f.at(l.well.x + 11, l.well.y)) == theme.pieceColor(core::PieceType::O));
+    // Its ghost on the bottom row: tinted, not plain well background.
+    const tui::Color ghost = topPixel(f.at(l.well.x + 8, l.well.bottom() - 1));
+    CHECK(!(ghost == theme.wellBackground()));
+    CHECK(!(ghost == theme.pieceColor(core::PieceType::O)));
     bool foundScore = false;
     for (int y = 0; y < f.height(); ++y) {
         foundScore = foundScore || contains(rowText(f, y), "1,234,567");
@@ -173,18 +189,22 @@ TEST(renderer_animates_line_clear) {
     const tui::Layout& l = r.layoutFor(s);
     const int row = l.well.bottom() - 1;
 
+    const tui::Theme theme = tui::Theme::standard();
+
     s.clearProgress = 0.2F;  // flashing: all cells still drawn, brighter than normal
     r.render(s);
-    const tui::Color flash = r.frame().at(l.well.x, row).style.fg;
-    CHECK(r.frame().at(l.well.x + 9, row).ch == U'█');
+    const tui::Color flash = topPixel(r.frame().at(l.well.x, row));
+    CHECK(flash == theme.clearingColor(core::PieceType::T, 0.2F));
+    CHECK(topPixel(r.frame().at(l.well.x + 8, row)) == flash);
 
     s.clearProgress = 0.9F;  // wiping: centre cells gone
     r.render(s);
-    CHECK(r.frame().at(l.well.x + 9, row).ch != U'█');
+    const tui::Color centre = topPixel(r.frame().at(l.well.x + 8, row));
+    CHECK(centre == theme.wellBackground());
 
     s.clearingRows.clear();  // normal locked cell for comparison
     r.render(s);
-    CHECK(!(r.frame().at(l.well.x, row).style.fg == flash));
+    CHECK(topPixel(r.frame().at(l.well.x, row)) == theme.lockedColor(core::PieceType::T));
 }
 
 TEST(layout_depends_on_board_size) {
@@ -212,7 +232,7 @@ TEST(renderer_hides_disabled_features) {
     CHECK(contains(holdRow, "off"));
     CHECK(contains(nextRow, "off"));
     // No ghost on the bottom row.
-    CHECK(r.frame().at(l.well.x + 8, l.well.bottom() - 1).ch != U'░');
+    CHECK(topPixel(r.frame().at(l.well.x + 8, l.well.bottom() - 1)) == tui::Theme::standard().wellBackground());
 }
 
 TEST(start_screen_shows_setup_menu) {
@@ -237,4 +257,50 @@ TEST(start_screen_shows_setup_menu) {
         all += rowText(r.frame(), y) + "\n";
     }
     CHECK(contains(all, "needs a"));
+}
+
+TEST(half_blocks_allow_in_between_sizes) {
+    // Regression: a 218x49 terminal (full-screen window) with the Tall
+    // board. 2x needs 50 rows; before half-block rendering this fell all the
+    // way back to 1x. Now it gets 1.5x.
+    const tui::Layout tall = tui::computeLayout({218, 49}, {10, 24}, 3, true);
+    CHECK(tall.fits);
+    CHECK_EQ(tall.cellPixels, 3);
+    const tui::Layout tallMono = tui::computeLayout({218, 49}, {10, 24}, 3, false);
+    CHECK_EQ(tallMono.cellPixels, 2);  // characters: whole multiples only
+    // Every board uses the largest size that fits.
+    for (const auto& size : core::kBoardSizes) {
+        const tui::Layout l = tui::computeLayout({218, 49}, {size.width, size.height}, 3, true);
+        CHECK(l.fits);
+        CHECK(l.board.bottom() <= 49);
+        CHECK(l.cellPixels >= 3);
+    }
+}
+
+TEST(easy_keeps_all_five_previews_by_shrinking_side_pieces) {
+    const tui::Layout l = tui::computeLayout({218, 49}, {10, 20}, 5, true);
+    CHECK_EQ(l.previewCount, 5);
+    CHECK(l.next.bottom() <= 49);
+}
+
+TEST(pixel_canvas_blits_half_blocks) {
+    tui::PixelCanvas canvas;
+    canvas.reset(2, 3);
+    const tui::Color red = tui::Color::rgb(255, 0, 0);
+    const tui::Color blue = tui::Color::rgb(0, 0, 255);
+    canvas.set(0, 0, red);
+    canvas.set(0, 1, blue);  // column 0: red over blue -> one '▀'
+    canvas.set(1, 0, red);
+    canvas.set(1, 1, red);   // column 1: red over red -> space with red bg
+    canvas.set(0, 2, blue);  // row 1 of the terminal: only the top half used
+    ScreenBuffer buf{4, 4};
+    canvas.blit(buf, 1, 1, tui::Color{});
+    CHECK(buf.at(1, 1).ch == U'▀');
+    CHECK(buf.at(1, 1).style.fg == red);
+    CHECK(buf.at(1, 1).style.bg == blue);
+    CHECK(buf.at(2, 1).ch == U' ');
+    CHECK(buf.at(2, 1).style.bg == red);
+    CHECK(buf.at(1, 2).ch == U'▀');
+    CHECK(buf.at(1, 2).style.fg == blue);
+    CHECK(buf.at(2, 2) == Cell{});  // fully transparent: untouched
 }

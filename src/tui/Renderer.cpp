@@ -98,7 +98,8 @@ constexpr int logoPixelWidth() {
 
 }  // namespace
 
-Renderer::Renderer(Theme theme, ColorMode mode) : theme_(std::move(theme)), mode_(mode) {}
+Renderer::Renderer(Theme theme, ColorMode mode)
+    : theme_(std::move(theme)), mode_(mode), halfBlocks_(mode != ColorMode::Monochrome && !theme_.isMonochrome()) {}
 
 void Renderer::resize(TerminalSize size) {
     terminal_ = size;
@@ -111,7 +112,7 @@ const Layout& Renderer::layoutFor(const GameState& state) {
     const BoardShape shape{state.board.width(), state.board.visibleHeight()};
     const int previews = state.rules.previewCount;
     if (!layoutValid_ || shape != layoutShape_ || previews != layoutPreviews_) {
-        layout_ = computeLayout(terminal_, shape, previews);
+        layout_ = computeLayout(terminal_, shape, previews, halfBlocks_);
         layoutValid_ = true;
         layoutShape_ = shape;
         layoutPreviews_ = previews;
@@ -288,7 +289,8 @@ void Renderer::drawSetupMenu(const GameState& state, int y) {
     drawCentred(back_, box.x, box.w, box.y + 5, difficulty.summary, muted);
 
     // Will the chosen board fit this terminal?
-    const Layout preview = computeLayout(terminal_, BoardShape{size.width, size.height}, difficulty.previewCount);
+    const Layout preview =
+        computeLayout(terminal_, BoardShape{size.width, size.height}, difficulty.previewCount, halfBlocks_);
     if (!preview.fits) {
         Style warn = theme_.warning();
         warn.bg = bg;
@@ -329,8 +331,8 @@ void Renderer::drawPlayfield(const GameState& state) {
 // ---------------------------------------------------------------------------
 
 void Renderer::drawBoardCell(int col, int row, const CellGlyph& glyph) {
-    const int cw = layout_.cellWidth;
-    const int ch = layout_.cellHeight;
+    const int cw = layout_.cellPixels;
+    const int ch = layout_.cellPixels / 2;
     const int x0 = layout_.well.x + col * cw;
     const int y0 = layout_.well.y + row * ch;
     for (int dy = 0; dy < ch; ++dy) {
@@ -346,7 +348,89 @@ void Renderer::drawBoardCell(int col, int row, const CellGlyph& glyph) {
 void Renderer::drawBoard(const GameState& state, bool hideContents) {
     drawPanelCentredTitle(back_, layout_.board, kBoardTitle,
                           PanelStyle{BorderStyle::Rounded, theme_.boardFrame(), theme_.accent(), false, {}});
+    if (layout_.halfBlocks) {
+        drawBoardPixels(state, hideContents);
+    } else {
+        drawBoardGlyphs(state, hideContents);
+    }
+}
 
+void Renderer::drawBoardPixels(const GameState& state, bool hideContents) {
+    const int k = layout_.cellPixels;
+    const int columns = state.board.width();
+    const int rows = state.board.visibleHeight();
+    const float centreColumn = static_cast<float>(columns - 1) / 2.0F;
+    const bool gameOver = state.mode == GameMode::GameOver;
+    canvas_.reset(columns * k, rows * k);
+
+
+    for (int row = 0; row < rows; ++row) {
+        const int y = row + Board::kHiddenRows;
+        const bool clearing =
+            std::find(state.clearingRows.begin(), state.clearingRows.end(), y) != state.clearingRows.end();
+        for (int col = 0; col < columns; ++col) {
+            const core::CellType cell = state.board.at({col, y});
+            const int px = col * k;
+            const int py = row * k;
+            if (hideContents || cell == core::CellType::Empty) {
+                continue;  // left transparent; gets a grid dot below
+            }
+            if (clearing) {
+                const float centreDistance = std::abs(static_cast<float>(col) - centreColumn);
+                if (centreDistance < state.clearProgress * (centreColumn + 1.5F) - 1.0F) {
+                    continue;  // wiped
+                }
+                canvas_.fill(px, py, k, k, theme_.clearingColor(pieceOf(cell), state.clearProgress));
+                continue;
+            }
+            Color c = theme_.lockedColor(pieceOf(cell));
+            if (gameOver) {
+                c = c.blended(theme_.wellBackground(), 0.6F);
+            }
+            canvas_.fill(px, py, k, k, c);
+        }
+    }
+
+    if (!hideContents && state.active) {
+        const auto visible = [rows](core::Point p) {
+            const int row = p.y - Board::kHiddenRows;
+            return row >= 0 && row < rows;
+        };
+
+        if (const auto ghost = state.ghost(); ghost && *ghost != *state.active) {
+            const Color g = theme_.ghostFillColor(ghost->type);
+            for (const core::Point p : game::cellsOf(*ghost)) {
+                if (visible(p)) {
+                    canvas_.fill(p.x * k, (p.y - Board::kHiddenRows) * k, k, k, g);
+                }
+            }
+        }
+
+        const Color active = theme_.pieceColor(state.active->type);
+        for (const core::Point p : game::cellsOf(*state.active)) {
+            if (visible(p)) {
+                canvas_.fill(p.x * k, (p.y - Board::kHiddenRows) * k, k, k, active);
+            }
+        }
+    }
+
+    canvas_.blit(back_, layout_.well.x, layout_.well.y, theme_.wellBackground());
+
+    // Grid dots: the same '·' glyph as character rendering, in the last
+    // column of the first terminal row that lies fully inside each empty cell.
+    const Style dotStyle{theme_.gridDotColor(), theme_.wellBackground(), false, false};
+    for (int row = 0; row < rows; ++row) {
+        const int textRow = (row * k + 1) / 2;  // first full terminal row of the cell
+        for (int col = 0; col < columns; ++col) {
+            const int px = col * k + k - 1;
+            if (canvas_.at(px, 2 * textRow).isDefault() && canvas_.at(px, 2 * textRow + 1).isDefault()) {
+                back_.set(layout_.well.x + px, layout_.well.y + textRow, U'·', dotStyle);
+            }
+        }
+    }
+}
+
+void Renderer::drawBoardGlyphs(const GameState& state, bool hideContents) {
     const CellGlyph empty = theme_.emptyCell();
     const bool gameOver = state.mode == GameMode::GameOver;
 
@@ -414,6 +498,22 @@ void Renderer::drawMiniPiece(PieceType type, int x, int y, int width, bool dimme
         minY = std::min(minY, p.y);
         maxY = std::max(maxY, p.y);
     }
+    if (layout_.halfBlocks) {
+        // Pixel rendering at the layout's preview size, centred in a
+        // `width` x (2 cells) area.
+        const int k = layout_.previewPixels;
+        const int cellsW = maxX - minX + 1;
+        const int cellsH = maxY - minY + 1;
+        canvas_.reset(cellsW * k, 2 * k);
+        const int offsetY = (2 - cellsH) * k / 2;
+        const Color c = dimmed ? theme_.ghostColor(type) : theme_.pieceColor(type);
+        for (const core::Point p : shape) {
+            canvas_.fill((p.x - minX) * k, offsetY + (p.y - minY) * k, k, k, c);
+        }
+        canvas_.blit(back_, x + (width - cellsW * k) / 2, y, Color{});
+        return;
+    }
+
     const int pieceW = (maxX - minX + 1) * 2;
     const int startX = x + (width - pieceW) / 2;
     const int startY = y + (2 - (maxY - minY + 1)) / 2;
@@ -532,7 +632,8 @@ void Renderer::drawNext(const GameState& state) {
         return;
     }
     for (int i = 0; i < layout_.previewCount; ++i) {
-        drawMiniPiece(state.preview[static_cast<std::size_t>(i)], r.x + 1, r.y + 2 + i * 3, r.w - 2, false);
+        const int slotRows = (2 * layout_.previewPixels + 1) / 2 + 1;
+        drawMiniPiece(state.preview[static_cast<std::size_t>(i)], r.x + 1, r.y + 2 + i * slotRows, r.w - 2, false);
     }
 }
 

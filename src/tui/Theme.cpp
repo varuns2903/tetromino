@@ -27,6 +27,7 @@ Theme Theme::standard() {
         Color::rgb(170, 225, 80),   // L lime
     };
     t.wellBg_ = Color::rgb(16, 17, 24);
+    t.gridDot_ = Color::rgb(44, 46, 60);
     t.frame_ = Style{Color::rgb(90, 95, 120), {}, false, false};
     t.boardFrame_ = Style{Color::rgb(140, 150, 190), {}, false, false};
     t.heading_ = Style{Color::rgb(200, 205, 230), {}, true, false};
@@ -63,7 +64,7 @@ CellGlyph Theme::emptyCell() const {
     }
     // A faint dot grid on a slightly lifted background makes the well
     // readable without competing with the pieces.
-    return {U' ', kMiddleDot, Style{Color::rgb(44, 46, 60), wellBg_, false, false}};
+    return {U' ', kMiddleDot, Style{gridDot_, wellBg_, false, false}};
 }
 
 CellGlyph Theme::activeCell(core::PieceType type) const {
@@ -78,30 +79,43 @@ CellGlyph Theme::lockedCell(core::PieceType type) const {
     if (monochrome_) {
         return {kDarkShade, kDarkShade, Style{}};
     }
-    // Locked pieces a touch darker than the falling one, so the active piece
-    // stands out in a busy stack.
-    const Color c = pieceColor(type).darkened(0.82F);
-    return {kFullBlock, kFullBlock, Style{c, wellBg_, false, false}};
+    return {kFullBlock, kFullBlock, Style{lockedColor(type), wellBg_, false, false}};
 }
 
 CellGlyph Theme::ghostCell(core::PieceType type) const {
     if (monochrome_) {
         return {kLightShade, kLightShade, Style{{}, {}, false, true}};
     }
-    const Color c = pieceColor(type).blended(wellBg_, 0.55F);
-    return {kLightShade, kLightShade, Style{c, wellBg_, false, false}};
+    return {kLightShade, kLightShade, Style{ghostColor(type), wellBg_, false, false}};
 }
 
 CellGlyph Theme::clearingCell(core::PieceType type, float progress) const {
     if (monochrome_) {
         return {kFullBlock, kFullBlock, Style{{}, {}, true, false}};
     }
+    return {kFullBlock, kFullBlock, Style{clearingColor(type, progress), wellBg_, false, false}};
+}
+
+Color Theme::lockedColor(core::PieceType type) const {
+    // Locked pieces a touch darker than the falling one, so the active piece
+    // stands out in a busy stack.
+    return pieceColor(type).darkened(0.82F);
+}
+
+Color Theme::ghostColor(core::PieceType type) const { return pieceColor(type).blended(wellBg_, 0.55F); }
+
+Color Theme::ghostFillColor(core::PieceType type) const {
+    // '░' covers roughly a quarter of the cell with the foreground colour, so
+    // the ghost glyph reads as the ghost colour mixed 1:3 with the well.
+    return ghostColor(type).blended(wellBg_, 0.75F);
+}
+
+Color Theme::clearingColor(core::PieceType type, float progress) const {
     // Flash to white, then fade into the well.
     const Color white = Color::rgb(255, 255, 255);
     const Color base = pieceColor(type);
-    const Color c = progress < 0.35F ? base.blended(white, progress / 0.35F)
-                                     : white.blended(wellBg_, (progress - 0.35F) / 0.65F);
-    return {kFullBlock, kFullBlock, Style{c, wellBg_, false, false}};
+    return progress < 0.35F ? base.blended(white, progress / 0.35F)
+                            : white.blended(wellBg_, (progress - 0.35F) / 0.65F);
 }
 
 }  // namespace tetromino::tui

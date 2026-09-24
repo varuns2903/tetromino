@@ -3,8 +3,13 @@
 // Screen layout: where each panel goes for a given terminal size.
 //
 // Pure geometry, recomputed on every resize. The layout is centred in the
-// terminal and scales the board up (4x2 characters per cell instead of 2x1)
-// when the window is large enough.
+// terminal and uses the largest board scale that fits.
+//
+// Sizes are measured in "pixels": one pixel is one terminal column wide and
+// half a terminal row tall, which is roughly square (see PixelCanvas). A board
+// cell is `cellPixels` x `cellPixels` pixels: 2 is the smallest (a cell is
+// 2 columns x 1 row), 3 is 1.5x, 4 is 2x, and so on. Colour terminals can
+// use every size; monochrome ones draw with characters and only even sizes.
 //
 //   ╭─ HOLD ───────╮ ╭─── TETROMINO ──────╮ ╭─ NEXT ───────╮
 //   │              │ │                    │ │              │
@@ -36,9 +41,11 @@ struct Layout {
     TerminalSize terminal{};
     TerminalSize minimum{};
 
-    // Terminal columns / rows used for one board cell.
-    int cellWidth = 2;
-    int cellHeight = 1;
+    // Size of one board cell / one HOLD-NEXT preview cell, in pixels.
+    int cellPixels = 2;
+    int previewPixels = 2;
+    // Pixel rendering (half blocks) vs character rendering.
+    bool halfBlocks = true;
 
     Rect board;  // including its border
     Rect well;   // the playfield inside the border
@@ -61,7 +68,9 @@ struct BoardShape {
 };
 
 // Layout for a board of `board` cells showing up to `previews` upcoming
-// pieces (0 = the NEXT panel shows that previews are off).
-[[nodiscard]] Layout computeLayout(TerminalSize terminal, BoardShape board = {}, int previews = 5);
+// pieces (0 = the NEXT panel shows that previews are off). `halfBlocks`
+// allows the in-between (odd) cell sizes.
+[[nodiscard]] Layout computeLayout(TerminalSize terminal, BoardShape board = {}, int previews = 5,
+                                   bool halfBlocks = true);
 
 }  // namespace tetromino::tui

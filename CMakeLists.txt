@@ -71,6 +71,7 @@ add_library(tetromino_tui STATIC
     src/tui/Color.cpp
     src/tui/Theme.cpp
     src/tui/ScreenBuffer.cpp
+    src/tui/PixelCanvas.cpp
     src/tui/Panel.cpp
     src/tui/Layout.cpp
     src/tui/Renderer.cpp

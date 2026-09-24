@@ -17,6 +17,7 @@
 
 #include "tui/Color.hpp"
 #include "tui/Layout.hpp"
+#include "tui/PixelCanvas.hpp"
 #include "tui/ScreenBuffer.hpp"
 #include "tui/Theme.hpp"
 
@@ -56,6 +57,9 @@ private:
     void drawSetupMenu(const core::GameState& state, int y);
     void drawPlayfield(const core::GameState& state);
     void drawBoard(const core::GameState& state, bool hideContents);
+    void drawBoardPixels(const core::GameState& state, bool hideContents);
+    void drawBoardGlyphs(const core::GameState& state, bool hideContents);
+
     void drawHold(const core::GameState& state);
     void drawStats(const core::GameState& state);
     void drawKeys(const core::GameState& state);
@@ -79,6 +83,8 @@ private:
     bool layoutValid_ = false;
     BoardShape layoutShape_{};
     int layoutPreviews_ = -1;
+    bool halfBlocks_;  // pixel rendering available (colour terminal)
+    PixelCanvas canvas_;  // reused every frame
     ScreenBuffer front_;
     ScreenBuffer back_;
     std::string output_;  // reused every frame to avoid reallocating

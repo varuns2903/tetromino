@@ -49,8 +49,9 @@ and putting the terminal back the way it was when the program exits.
 - Line-clear animation (a flash, then a wipe out from the centre) with a
   SINGLE / DOUBLE / TRIPLE / QUAD! callout
 - Start menu, pause, game over, restart and back-to-menu, all run by one explicit state machine
-- Responsive layout: the game is centred, switches to double-size cells on big
-  terminals, and shows a "terminal too small" screen (and auto-pauses) when
+- Responsive layout: the game is centred and the board is drawn at the
+  largest size that fits (1×, 1.5×, 2×, 2.5×… using half-block pixels), with
+  side-panel pieces that scale along, and shows a "terminal too small" screen (and auto-pauses) when
   the window is too small
 - 24-bit colour with automatic fallback to 256, 16 or no colours
   (`NO_COLOR` is honoured)
@@ -63,7 +64,7 @@ and putting the terminal back the way it was when the program exits.
   re-entered on `fg`)
 - Auto-pause when the window loses focus
 - Reproducible games with `--seed`
-- 116 unit tests with no dependencies, plus a pty-based terminal-restoration check
+- 119 unit tests with no dependencies, plus a pty-based terminal-restoration check
 
 ## Controls
 
@@ -144,9 +145,9 @@ sequences, so it should work in Kitty, Foot, Alacritty, WezTerm, GNOME Terminal,
 Konsole, xterm, tmux and screen.
 
 - **Minimum size**: the start menu needs 50×20; the game depends on the
-  board: 54×18 (Small), 58×22 (Classic), 66×22 (Wide), 58×26 (Tall). The
-  start menu warns when the chosen board won't fit. Large terminals get
-  double-size cells.
+  board: 54×18 (Small; 54×20 on Easy for the 5 previews), 58×22 (Classic),
+  66×22 (Wide), 58×26 (Tall). The start menu warns when the chosen board
+  won't fit. Bigger terminals get a bigger board, in half-size steps.
 - **Colour**: detected from `COLORTERM` and `TERM`. Override it with `--color`.
 - **Fonts**: the terminal needs a UTF-8 locale and a font with box-drawing
   (`╭─╮`) and block (`█░`) glyphs, which almost every monospace font has.
@@ -160,7 +161,7 @@ tetromino/
 ├── include/ src/
 │   ├── core/    Game (engine + state machine), GameState (snapshot), GameConfig, Presets, Types
 │   ├── game/    Board, Piece, PieceGenerator, Collision, Rotation, Scoring
-│   ├── tui/     Terminal, Input, Ansi, Color, Theme, ScreenBuffer, Panel, Layout, Renderer
+│   ├── tui/     Terminal, Input, Ansi, Color, Theme, ScreenBuffer, PixelCanvas, Panel, Layout, Renderer
 │   ├── util/    Logger, Random
 │   └── app/     Application (the main loop), Options (CLI)
 ├── tests/       one executable per area + a ~60-line test harness
@@ -300,6 +301,17 @@ cursor move (skipped when the cursor is already there), a style change (skipped
 when the style hasn't changed) and the glyph. Then `front = back`. If nothing
 changed, nothing is written. React's virtual DOM and curses' `refresh()` work
 the same way.
+
+### Half-block pixels (`include/tui/PixelCanvas.hpp`)
+
+A terminal cell is about twice as tall as it is wide, so `▀` (upper half
+block) with a foreground *and* a background colour shows two square-ish
+pixels stacked in one cell. The board is drawn into a small bitmap at that
+resolution and then converted to `▀`/`▄`/space cells. Because a board cell
+can then be any whole number of these pixels (2 = 1×, 3 = 1.5×, 4 = 2×, …),
+the layout picks the largest size that fits instead of jumping between 1× and
+2×. Monochrome terminals can't set two colours per cell, so they keep
+character rendering (`██`, `░░`, `·`) at whole multiples.
 
 ### The game loop (`src/app/Application.cpp`)
 

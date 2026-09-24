@@ -31,6 +31,15 @@ public:
         return pieceColors_[core::indexOf(type)];
     }
 
+    // Colours for pixel (half-block) rendering.
+    [[nodiscard]] Color lockedColor(core::PieceType type) const;
+    [[nodiscard]] Color ghostColor(core::PieceType type) const;
+    // Solid colour that looks like the '░' ghost glyph (for pixel rendering).
+    [[nodiscard]] Color ghostFillColor(core::PieceType type) const;
+    [[nodiscard]] Color clearingColor(core::PieceType type, float progress) const;
+    [[nodiscard]] Color gridDotColor() const { return gridDot_; }
+
+    // Glyphs for character rendering (monochrome terminals).
     [[nodiscard]] CellGlyph emptyCell() const;
     [[nodiscard]] CellGlyph activeCell(core::PieceType type) const;
     [[nodiscard]] CellGlyph lockedCell(core::PieceType type) const;
@@ -55,6 +64,7 @@ private:
     bool monochrome_ = false;
     std::array<Color, core::kPieceTypeCount> pieceColors_{};
     Color wellBg_{};
+    Color gridDot_{};
     Style frame_{};
     Style boardFrame_{};
     Style heading_{};
