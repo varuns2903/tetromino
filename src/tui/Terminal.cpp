@@ -33,6 +33,7 @@
 // ---------------------------------------------------------------------------
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cerrno>
 #include <csignal>
@@ -368,6 +369,35 @@ bool Terminal::waitForInput(std::chrono::milliseconds timeout) {
         return false;
     }
     return rc > 0;
+}
+
+std::optional<Rgb> Terminal::queryBackground(std::chrono::milliseconds timeout) {
+    std::string query;
+    query += ansi::kQueryBackground;
+    query += ansi::kQueryDeviceAttributes;
+    if (!write(query)) {
+        return std::nullopt;
+    }
+
+    // Collect replies until the DA1 answer (ESC [ ? ... c) shows up, which
+    // every terminal sends after answering (or ignoring) the colour query.
+    std::string replies;
+    std::array<char, 256> chunk{};
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    for (;;) {
+        const auto left =
+            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+        if (left.count() <= 0 || !waitForInput(left)) {
+            break;
+        }
+        const std::size_t got = readAvailable(chunk);
+        replies.append(chunk.data(), got);
+        const std::size_t da = replies.find("\x1b[?");
+        if (da != std::string::npos && replies.find('c', da) != std::string::npos) {
+            break;
+        }
+    }
+    return parseBackgroundReply(replies);
 }
 
 std::size_t Terminal::readAvailable(std::span<char> buffer) {

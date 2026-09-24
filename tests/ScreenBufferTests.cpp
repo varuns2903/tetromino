@@ -455,3 +455,39 @@ TEST(feedback_keeps_the_important_lines_when_space_is_short) {
     CHECK(contains(all, "QUAD!"));
     CHECK(contains(all, "+9,000"));
 }
+
+// --- Background detection ---------------------------------------------------
+
+TEST(parses_background_replies) {
+    const auto dark = tui::parseBackgroundReply("\x1b]11;rgb:1e1e/1e1e/1e1e\x1b\\");
+    CHECK(dark.has_value());
+    CHECK(*dark == (tui::Rgb{30, 30, 30}));
+    CHECK(!tui::isLight(*dark));
+
+    // BEL terminator, two-digit components, mixed with other replies.
+    const auto light = tui::parseBackgroundReply("\x1b[?62;22c\x1b]11;rgb:ff/fa/f0\x07");
+    CHECK(light.has_value());
+    CHECK(*light == (tui::Rgb{255, 250, 240}));
+    CHECK(tui::isLight(*light));
+
+    CHECK(!tui::parseBackgroundReply("").has_value());
+    CHECK(!tui::parseBackgroundReply("\x1b[?1;2c").has_value());         // only DA1
+    CHECK(!tui::parseBackgroundReply("\x1b]11;rgb:ffff/ffff\x07").has_value());  // truncated
+    CHECK(!tui::parseBackgroundReply("\x1b]11;rgb:zz/00/00\x07").has_value());
+}
+
+TEST(reads_colorfgbg) {
+    CHECK(!tui::lightBackgroundFromColorFgBg(nullptr).has_value());
+    CHECK(tui::lightBackgroundFromColorFgBg("15;0") == false);
+    CHECK(tui::lightBackgroundFromColorFgBg("0;15") == true);
+    CHECK(tui::lightBackgroundFromColorFgBg("0;default;7") == true);
+    CHECK(!tui::lightBackgroundFromColorFgBg("garbage").has_value());
+}
+
+TEST(light_theme_has_light_well_and_dark_text) {
+    const tui::Theme t = tui::Theme::light();
+    CHECK(tui::isLight(t.wellBackground().value()));
+    CHECK(!tui::isLight(t.value().fg.value()));
+    CHECK(!tui::isLight(t.overlay().fg.value()));
+    CHECK(tui::isLight(t.overlay().bg.value()));
+}

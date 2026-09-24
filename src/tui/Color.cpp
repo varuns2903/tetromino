@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdlib>
+#include <string>
 #include <string_view>
 
 namespace tetromino::tui {
@@ -128,6 +129,76 @@ ColorMode detectColorMode() {
         return ColorMode::Ansi256;
     }
     return ColorMode::Ansi16;
+}
+
+bool isLight(Rgb c) {
+    // Rec. 709 luma weights; good enough to tell a light theme from a dark one.
+    const double luma = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    return luma > 127.5;
+}
+
+std::optional<Rgb> parseBackgroundReply(std::string_view bytes) {
+    constexpr std::string_view kPrefix = "\x1b]11;rgb:";
+    const std::size_t start = bytes.find(kPrefix);
+    if (start == std::string_view::npos) {
+        return std::nullopt;
+    }
+    std::string_view rest = bytes.substr(start + kPrefix.size());
+
+    // Three '/'-separated hex components, terminated by BEL or ESC '\'.
+    std::array<int, 3> values{};
+    for (std::size_t i = 0; i < 3; ++i) {
+        std::size_t len = 0;
+        unsigned long value = 0;
+        while (len < rest.size() && len < 4) {
+            const char ch = rest[len];
+            int digit = -1;
+            if (ch >= '0' && ch <= '9') digit = ch - '0';
+            else if (ch >= 'a' && ch <= 'f') digit = ch - 'a' + 10;
+            else if (ch >= 'A' && ch <= 'F') digit = ch - 'A' + 10;
+            if (digit < 0) break;
+            value = value * 16 + static_cast<unsigned long>(digit);
+            ++len;
+        }
+        if (len == 0) {
+            return std::nullopt;
+        }
+        // Scale n hex digits to 0-255 (e.g. "ffff" -> 255, "f" -> 255).
+        const unsigned long max = (1UL << (4 * len)) - 1;
+        values[i] = static_cast<int>((value * 255 + max / 2) / max);
+        rest.remove_prefix(len);
+        if (i < 2) {
+            if (rest.empty() || rest.front() != '/') {
+                return std::nullopt;
+            }
+            rest.remove_prefix(1);
+        }
+    }
+    if (!(rest.starts_with("\x07") || rest.starts_with("\x1b\\"))) {
+        return std::nullopt;
+    }
+    return Rgb{static_cast<std::uint8_t>(values[0]), static_cast<std::uint8_t>(values[1]),
+               static_cast<std::uint8_t>(values[2])};
+}
+
+std::optional<bool> lightBackgroundFromColorFgBg(const char* value) {
+    if (value == nullptr) {
+        return std::nullopt;
+    }
+    // The background is the last field: "fg;bg" or "fg;default;bg".
+    const std::string_view v{value};
+    const std::size_t semi = v.rfind(';');
+    if (semi == std::string_view::npos) {
+        return std::nullopt;
+    }
+    const std::string_view bg = v.substr(semi + 1);
+    if (bg.empty() || bg.size() > 2 || bg.find_first_not_of("0123456789") != std::string_view::npos) {
+        return std::nullopt;
+    }
+    const int index = std::stoi(std::string{bg});
+    // In the 16-colour palette, 7 (white) and 9-15 (bright colours) read as
+    // light backgrounds; 0-6 and 8 as dark.
+    return index == 7 || index >= 9;
 }
 
 }  // namespace tetromino::tui

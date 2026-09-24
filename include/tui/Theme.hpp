@@ -22,7 +22,8 @@ struct CellGlyph {
 
 class Theme {
 public:
-    static Theme standard();
+    static Theme standard();  // for dark terminal backgrounds
+    static Theme light();     // for light terminal backgrounds
     static Theme monochrome();
 
     [[nodiscard]] bool isMonochrome() const { return monochrome_; }
@@ -62,6 +63,9 @@ public:
     [[nodiscard]] const Style& danger() const { return danger_; }
     // Roughly the terminal background, for fading text out.
     [[nodiscard]] Color panelBackground() const { return panelBg_; }
+    // Start-screen logo: vertical gradient from top to bottom colour.
+    [[nodiscard]] Color logoTop() const { return logoTop_; }
+    [[nodiscard]] Color logoBottom() const { return logoBottom_; }
     [[nodiscard]] Color wellBackground() const { return wellBg_; }
 
 private:
@@ -81,6 +85,9 @@ private:
     Style warning_{};
     Style danger_{};
     Color panelBg_{};
+    Color logoTop_{};
+    Color logoBottom_{};
+    Color flash_{};  // what clearing rows flash towards
 };
 
 }  // namespace tetromino::tui

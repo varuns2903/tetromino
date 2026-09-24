@@ -8,6 +8,8 @@
 // This lets the renderer and themes stay oblivious to terminal capabilities.
 
 #include <cstdint>
+#include <optional>
+#include <string_view>
 
 namespace tetromino::tui {
 
@@ -73,5 +75,17 @@ struct Style {
 
 // Guess terminal colour support from $NO_COLOR, $COLORTERM and $TERM.
 [[nodiscard]] ColorMode detectColorMode();
+
+// Perceived brightness above one half: dark text belongs on this background.
+[[nodiscard]] bool isLight(Rgb c);
+
+// Find a terminal's reply to the background-colour query (OSC 11) in raw
+// input bytes, e.g. "ESC ] 11 ; rgb:1e1e/1e1e/1e1e ESC \". Components may
+// have 1-4 hex digits. Returns nullopt if there's no well-formed reply.
+[[nodiscard]] std::optional<Rgb> parseBackgroundReply(std::string_view bytes);
+
+// Background brightness from $COLORFGBG ("15;0" = light text on colour 0),
+// set by some terminals (rxvt, Konsole). nullopt if unset or unclear.
+[[nodiscard]] std::optional<bool> lightBackgroundFromColorFgBg(const char* value);
 
 }  // namespace tetromino::tui

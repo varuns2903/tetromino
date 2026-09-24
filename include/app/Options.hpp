@@ -12,6 +12,8 @@
 
 namespace tetromino::app {
 
+enum class ThemeChoice : std::uint8_t { Auto, Dark, Light };
+
 struct Options {
     std::optional<std::uint64_t> seed;       // --seed N: reproducible piece sequence
     int startLevel = 1;                      // --level N
@@ -19,6 +21,7 @@ struct Options {
     std::size_t boardSize = core::kDefaultBoardSize;    // --size NAME (pre-selected in the menu)
     std::size_t difficulty = core::kDefaultDifficulty;  // --difficulty NAME (pre-selected)
     std::optional<tui::ColorMode> colorMode; // --color MODE (default: auto-detect)
+    ThemeChoice theme = ThemeChoice::Auto;   // --theme auto|dark|light
     int fps = 60;                            // --fps N
     bool debug = false;                      // --debug: write a log file
     bool showHelp = false;

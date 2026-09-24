@@ -11,8 +11,11 @@
 
 #include <chrono>
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <string_view>
+
+#include "tui/Color.hpp"
 
 namespace tetromino::tui {
 
@@ -70,6 +73,11 @@ public:
     // Returns true if input is available. This is how the game loop sleeps
     // without busy-waiting.
     bool waitForInput(std::chrono::milliseconds timeout);
+
+    // Ask the terminal for its background colour. Waits at most `timeout`,
+    // usually far less: the terminal's reply to a second, universally
+    // supported query ends the wait early. nullopt if it doesn't say.
+    [[nodiscard]] std::optional<Rgb> queryBackground(std::chrono::milliseconds timeout);
 
     // Read whatever bytes are available right now, without blocking.
     // Returns the number of bytes read (0 if none).

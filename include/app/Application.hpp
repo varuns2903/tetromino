@@ -6,9 +6,14 @@
 
 #include "app/Options.hpp"
 #include "core/GameState.hpp"
+#include "tui/Theme.hpp"
 
 namespace tetromino::util {
 class Logger;
+}
+
+namespace tetromino::tui {
+class Terminal;
 }
 
 namespace tetromino::app {
@@ -28,6 +33,9 @@ public:
     RunSummary run();
 
 private:
+    // Dark or light theme: from --theme, or by asking the terminal.
+    tui::Theme chooseTheme(tui::Terminal& terminal, tui::ColorMode colorMode);
+
     const Options& options_;
     util::Logger& logger_;
 };

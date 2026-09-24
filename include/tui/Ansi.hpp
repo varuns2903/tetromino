@@ -61,6 +61,12 @@ inline constexpr std::string_view kDisableFocusEvents = "\x1b[?1004l";
 inline constexpr std::string_view kPushTitle = "\x1b[22;0t";
 inline constexpr std::string_view kPopTitle = "\x1b[23;0t";
 
+// Queries whose answers arrive on stdin. OSC 11 asks for the background
+// colour (not every terminal answers); DA1 ("what are you?") is answered by
+// every VT-compatible terminal, so its reply marks the end of the answers.
+inline constexpr std::string_view kQueryBackground = "\x1b]11;?\x1b\\";
+inline constexpr std::string_view kQueryDeviceAttributes = "\x1b[c";
+
 // Everything needed to put the terminal back the way a shell expects it,
 // as a single constant so it can be written from a signal handler (no
 // allocation, one write()).

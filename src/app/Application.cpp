@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <format>
 #include <limits>
 #include <vector>
@@ -58,6 +59,33 @@ SetupNames namesOf(const core::Setup& setup) {
     return {core::kGameTypes[setup.gameType].name, core::kBoardSizes[setup.boardSize].name,
             core::kDifficulties[setup.difficulty].name};
 }
+
+}  // namespace
+
+tui::Theme Application::chooseTheme(tui::Terminal& terminal, tui::ColorMode colorMode) {
+    if (colorMode == tui::ColorMode::Monochrome) {
+        return tui::Theme::monochrome();
+    }
+    switch (options_.theme) {
+    case ThemeChoice::Dark: return tui::Theme::standard();
+    case ThemeChoice::Light: return tui::Theme::light();
+    case ThemeChoice::Auto: break;
+    }
+    if (const auto bg = terminal.queryBackground(std::chrono::milliseconds{300})) {
+        const bool light = tui::isLight(*bg);
+        logger_.info(std::format("terminal background rgb({}, {}, {}): {} theme", bg->r, bg->g, bg->b,
+                                 light ? "light" : "dark"));
+        return light ? tui::Theme::light() : tui::Theme::standard();
+    }
+    if (const auto light = tui::lightBackgroundFromColorFgBg(std::getenv("COLORFGBG"))) {
+        logger_.info(std::format("COLORFGBG: {} theme", *light ? "light" : "dark"));
+        return *light ? tui::Theme::light() : tui::Theme::standard();
+    }
+    logger_.info("terminal background unknown: dark theme");
+    return tui::Theme::standard();
+}
+
+namespace {
 
 const char* modeName(core::GameMode mode) {
     switch (mode) {
@@ -98,8 +126,7 @@ RunSummary Application::run() {
 
     tui::Terminal terminal;
     tui::Input input{terminal};
-    tui::Renderer renderer{
-        colorMode == tui::ColorMode::Monochrome ? tui::Theme::monochrome() : tui::Theme::standard(), colorMode};
+    tui::Renderer renderer{chooseTheme(terminal, colorMode), colorMode};
 
     const auto resize = [&] {
         const tui::TerminalSize size = terminal.size();

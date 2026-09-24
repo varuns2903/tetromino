@@ -270,11 +270,11 @@ void Renderer::drawStartScreen(const GameState& state) {
     for (const LogoLetter& letter : kLogo) {
         const int letterW = static_cast<int>(letter.rows[0].size());
         for (int row = 0; row < kLogoHeight; ++row) {
-            // One vertical gradient across the whole word (mint -> violet).
+            // One vertical gradient across the whole word.
             const float t = static_cast<float>(row) / static_cast<float>(kLogoHeight - 1);
             Style style{};
             if (!theme_.isMonochrome()) {
-                style.fg = Color::rgb(80, 220, 170).blended(Color::rgb(196, 128, 255), t);
+                style.fg = theme_.logoTop().blended(theme_.logoBottom(), t);
             }
             const std::string_view line = letter.rows[static_cast<std::size_t>(row)];
             for (int col = 0; col < letterW; ++col) {

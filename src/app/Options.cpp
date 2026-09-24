@@ -107,6 +107,17 @@ std::variant<Options, std::string> parseOptions(int argc, const char* const* arg
                 return std::string{"--fps expects a number between 10 and 240"};
             }
             options.fps = *fps;
+        } else if (name == "--theme") {
+            const auto v = value();
+            if (v == "auto") {
+                options.theme = ThemeChoice::Auto;
+            } else if (v == "dark") {
+                options.theme = ThemeChoice::Dark;
+            } else if (v == "light") {
+                options.theme = ThemeChoice::Light;
+            } else {
+                return std::string{"--theme expects one of: auto, dark, light"};
+            }
         } else if (name == "--color") {
             const auto v = value();
             const auto mode = v ? parseColorMode(*v) : std::nullopt;
@@ -143,6 +154,8 @@ Options:
   --difficulty D   pre-select the difficulty: easy | normal | hard | expert
   --level N        start at level N (1-30, default 1; difficulty may add more)
   --seed N         fixed random seed, for a reproducible piece sequence
+  --theme THEME    auto | dark | light   (default: auto, asks the terminal
+                   for its background colour)
   --color MODE     truecolor | 256 | 16 | mono   (default: auto-detect)
   --mono           same as --color mono
   --fps N          render rate, 10-240 (default 60)
