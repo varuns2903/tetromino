@@ -1,0 +1,17 @@
+pkgbase = tetromino
+	pkgdesc = Falling-block puzzle game for the terminal, written from scratch in C++20 (termios + ANSI, no ncurses)
+	pkgver = 1.0.1
+	pkgrel = 1
+	url = https://github.com/varuns2903/tetromino
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	makedepends = cmake
+	makedepends = ninja
+	depends = glibc
+	depends = libgcc
+	depends = libstdc++
+	source = tetromino-1.0.1.tar.gz::https://github.com/varuns2903/tetromino/archive/refs/tags/v1.0.1.tar.gz
+	sha256sums = a56117cfc0aeacc480565ff5a9a4dfed9e660416f24ac85fae0b64bfe1475ed8
+
+pkgname = tetromino

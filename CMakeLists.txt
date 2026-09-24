@@ -27,6 +27,12 @@ option(TETROMINO_STATIC "Link the executable fully statically (for portable rele
 
 include(GNUInstallDirs)
 
+# Static release binaries are built as static-PIE, so they keep address-space
+# layout randomisation; everything must then be compiled position-independent.
+if(TETROMINO_STATIC)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
+
 # ---------------------------------------------------------------------------
 # Shared compile options, applied to every target through an interface lib.
 # ---------------------------------------------------------------------------
@@ -97,7 +103,8 @@ target_link_libraries(tetromino PRIVATE tetromino_tui tetromino_engine tetromino
 target_compile_definitions(tetromino PRIVATE TETROMINO_VERSION="${PROJECT_VERSION}")
 
 if(TETROMINO_STATIC)
-    target_link_options(tetromino PRIVATE -static)
+    # static-PIE + full RELRO: one self-contained file, still hardened.
+    target_link_options(tetromino PRIVATE -static-pie -Wl,-z,relro,-z,now)
 endif()
 
 # ---------------------------------------------------------------------------

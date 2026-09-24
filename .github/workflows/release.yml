@@ -53,7 +53,7 @@ jobs:
       - name: Build, test and package
         run: CXX=g++-14 scripts/build-release.sh
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.arch }}
           path: dist/*
@@ -71,7 +71,7 @@ jobs:
         with:
           ref: ${{ env.TAG }}
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           pattern: dist-*
           merge-multiple: true

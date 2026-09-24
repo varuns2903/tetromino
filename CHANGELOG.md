@@ -4,6 +4,15 @@ All notable changes to this project. Versions follow
 [Semantic Versioning](https://semver.org/). Each release's GitHub notes are
 taken from its section here.
 
+## [Unreleased]
+
+### Added
+- Arch Linux packages (`tetromino`, `tetromino-bin`) in `packaging/aur`
+
+### Changed
+- Release binaries are static-PIE with full RELRO (address-space layout
+  randomisation and read-only relocations), still with no dependencies
+
 ## [1.0.1] - 2026-09-24
 
 Packaging release; gameplay is unchanged from 1.0.0.

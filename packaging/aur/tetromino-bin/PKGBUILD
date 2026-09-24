@@ -1,0 +1,26 @@
+# Maintainer: Varun S <04varuns at gmail dot com>
+
+pkgname=tetromino-bin
+_pkgname=tetromino
+pkgver=1.0.1
+pkgrel=1
+pkgdesc='Falling-block puzzle game for the terminal (prebuilt static binary)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/varuns2903/tetromino'
+license=('MIT')
+provides=("$_pkgname=$pkgver")
+conflicts=("$_pkgname")
+# Already stripped, fully static release binary.
+options=('!strip' '!debug')
+source_x86_64=("$url/releases/download/v$pkgver/$_pkgname-$pkgver-linux-x86_64.tar.gz")
+source_aarch64=("$url/releases/download/v$pkgver/$_pkgname-$pkgver-linux-aarch64.tar.gz")
+sha256sums_x86_64=('cc64db63a681471790fea360cce603099b118a5bf819113bdad0a0890d1c542b')
+sha256sums_aarch64=('b3f4b8e5f155e0934cd8d660cb9269272428f134c1f1173811623a17e5dc7166')
+
+package() {
+  cd "$_pkgname-$pkgver-linux-$CARCH"
+  install -Dm755 tetromino "$pkgdir/usr/bin/tetromino"
+  install -Dm644 tetromino.6 "$pkgdir/usr/share/man/man6/tetromino.6"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$_pkgname/README.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
