@@ -1,0 +1,195 @@
+.TH TETROMINO 6 "2026-09-24" "tetromino 1.0.1" "Games"
+.SH NAME
+tetromino \- falling-block puzzle game for the terminal
+.SH SYNOPSIS
+.B tetromino
+.RB [ \-\-size
+.IR NAME ]
+.RB [ \-\-difficulty
+.IR NAME ]
+.RB [ \-\-level
+.IR N ]
+.RB [ \-\-seed
+.IR N ]
+.RB [ \-\-color
+.IR MODE ]
+.RB [ \-\-mono ]
+.RB [ \-\-fps
+.IR N ]
+.RB [ \-\-debug ]
+.br
+.B tetromino
+.RB \-h | \-\-help | \-V | \-\-version
+.SH DESCRIPTION
+.B tetromino
+is a falling-block puzzle game that runs in a terminal.
+Seven kinds of four-square pieces fall into a well; move and rotate them to
+fill complete rows, which then disappear.
+The game ends when the stack reaches the top.
+.PP
+The start screen is a setup menu where you choose a board size and a
+difficulty.
+The board is drawn at the largest size that fits the terminal, and the
+terminal is restored when the game exits, including on errors and signals.
+.SH OPTIONS
+.TP
+.BI \-\-size " NAME"
+Pre-select the board in the start menu:
+.B small
+(8\(mu16),
+.B classic
+(10\(mu20, default),
+.B wide
+(14\(mu20) or
+.B tall
+(10\(mu24).
+.TP
+.BI \-\-difficulty " NAME"
+Pre-select the difficulty:
+.BR easy ,
+.B normal
+(default),
+.B hard
+or
+.BR expert .
+See
+.BR DIFFICULTY .
+.TP
+.BI \-\-level " N"
+Start at level
+.I N
+(1\-30, default 1).
+The difficulty may add further levels.
+.TP
+.BI \-\-seed " N"
+Use a fixed random seed.
+The same seed gives the same sequence of pieces on every machine.
+.TP
+.BI \-\-color " MODE"
+Force the colour mode:
+.BR truecolor ,
+.BR 256 ,
+.B 16
+or
+.BR mono .
+By default it is detected from
+.BR COLORTERM " and " TERM .
+.TP
+.B \-\-mono
+Same as
+.BR "\-\-color mono" .
+.TP
+.BI \-\-fps " N"
+Maximum render rate, 10\-240 (default 60).
+.TP
+.B \-\-debug
+Write a debug log (see
+.BR FILES ).
+.TP
+.BR \-h ", " \-\-help
+Show a summary of options and controls.
+.TP
+.BR \-V ", " \-\-version
+Show the version.
+.SH CONTROLS
+.SS Start menu
+.TP 16
+.BR \(ua " " \(da " or " W " " S
+Choose the board or difficulty row.
+.TP
+.BR \(<- " " \(-> " or " A " " D
+Change the selected option.
+.TP
+.B Enter
+Start the game.
+.TP
+.BR Q " or " Esc
+Quit.
+.SS Playing
+.TP 16
+.BR \(<- " " \(-> " or " A " " D
+Move the piece.
+.TP
+.BR \(ua ", " W " or " X
+Rotate clockwise.
+.TP
+.B Z
+Rotate counter-clockwise.
+.TP
+.BR \(da " or " S
+Soft drop (one row).
+.TP
+.B Space
+Hard drop.
+.TP
+.B C
+Hold the current piece (if the difficulty allows it).
+.TP
+.BR P " or " Esc
+Pause and resume.
+.TP
+.B R
+Restart (when paused or after game over).
+.TP
+.B M
+Back to the setup menu (when paused or after game over).
+.TP
+.BR Q " or " Ctrl\-C
+Quit.
+.TP
+.B Ctrl\-Z
+Suspend to the shell; resume with
+.BR fg .
+.SH DIFFICULTY
+.TS
+l l l l l l.
+Difficulty	Fall speed	Start level	Hold	Next pieces	Ghost
+Easy	1.5\(mu slower	+0	yes	5	yes
+Normal	standard	+0	yes	3	yes
+Hard	0.6\(mu	+2	no	1	yes
+Expert	0.35\(mu	+4	no	0	no
+.TE
+.PP
+The level rises every 10 cleared lines.
+Clearing 1, 2, 3 or 4 lines at once scores 100, 300, 500 or 800 points
+multiplied by the level; soft drops score 1 point per row and hard drops
+2 points per row.
+.SH ENVIRONMENT
+.TP
+.B NO_COLOR
+If set to a non-empty value, disables colour.
+.TP
+.BR COLORTERM ", " TERM
+Used to detect colour support.
+.TP
+.B TETROMINO_DEBUG
+If set to a value other than 0, enables debug logging, like
+.BR \-\-debug .
+.TP
+.B XDG_STATE_HOME
+Base directory for the debug log (default
+.IR ~/.local/state ).
+.SH FILES
+.TP
+.I $XDG_STATE_HOME/tetromino/tetromino.log
+Debug log, written only with
+.B \-\-debug
+or
+.BR TETROMINO_DEBUG .
+.SH NOTES
+The terminal must use UTF-8 and be at least 50\(mu20 for the menu and about
+58\(mu22 for the classic board (the menu shows the exact size needed).
+Colour terminals get 24-bit colour, with fallbacks to 256 and 16 colours.
+.SH EXIT STATUS
+0 on normal exit, 1 on errors (for example when not run in a terminal),
+2 for invalid command-line options.
+.SH BUGS
+Report bugs at
+.UR https://github.com/varuns2903/tetromino/issues
+.UE .
+.SH AUTHOR
+Varun S.
+.SH COPYRIGHT
+MIT License.
+Tetris is a registered trademark of The Tetris Company, LLC;
+this project is not affiliated with it.

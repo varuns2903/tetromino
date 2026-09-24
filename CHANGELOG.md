@@ -1,0 +1,37 @@
+# Changelog
+
+All notable changes to this project. Versions follow
+[Semantic Versioning](https://semver.org/). Each release's GitHub notes are
+taken from its section here.
+
+## [1.0.1] - 2026-09-24
+
+Packaging release; gameplay is unchanged from 1.0.0.
+
+### Added
+- `.deb` (Debian, Ubuntu) and `.rpm` (Fedora, openSUSE) packages
+- arm64 (aarch64) builds: static binary, `.deb` and `.rpm`
+- Man page: `man tetromino` (section 6)
+- `cmake --install` installs the binary, man page, README and license
+- Release workflow: pushing a version tag builds, tests and publishes all
+  artifacts with checksums
+- Demo GIF in the README
+
+## [1.0.0] - 2026-09-24
+
+First public release.
+
+### Added
+- Setup menu: four board sizes (Small, Classic, Wide, Tall) and four
+  difficulties (Easy, Normal, Hard, Expert) that change fall speed, start
+  level, hold, number of next pieces, ghost piece and lock delay
+- Wall-kick rotation, 7-bag randomizer, hold, next queue, ghost piece, lock
+  delay, line-clear animation, scoring and levels
+- Board drawn at the largest size that fits the terminal, in half steps
+- 24-bit colour with 256 / 16 / monochrome fallback; `NO_COLOR` support
+- Terminal restored on every exit path, including signals and crashes;
+  Ctrl-Z suspend
+- Static x86_64 Linux binary
+
+[1.0.1]: https://github.com/varuns2903/tetromino/releases/tag/v1.0.1
+[1.0.0]: https://github.com/varuns2903/tetromino/releases/tag/v1.0.0

@@ -1,0 +1,130 @@
+name: Release
+
+# Push a tag like v1.2.3 (matching the version in CMakeLists.txt) to build,
+# test and publish static binaries, .deb and .rpm packages for x86_64 and
+# arm64. Can also be re-run by hand for an existing tag.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and (re)publish, e.g. v1.0.1
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: Build (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Check the tag matches the project version
+        run: |
+          version="$(sed -n 's/^    VERSION \([0-9.]*\)$/\1/p' CMakeLists.txt)"
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match the CMakeLists.txt version $version"
+            exit 1
+          fi
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build g++-14 dpkg-dev rpm
+
+      - name: Build, test and package
+        run: CXX=g++-14 scripts/build-release.sh
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dist-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+
+      - name: Combine checksums
+        run: |
+          cat dist/SHA256SUMS-*.txt | sort -k2 > dist/SHA256SUMS.txt
+          rm dist/SHA256SUMS-*.txt
+          cat dist/SHA256SUMS.txt
+
+      - name: Write release notes
+        run: |
+          version="${TAG#v}"
+          # This version's section of CHANGELOG.md (up to the next heading).
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { found = 1; next }
+            found && /^## \[/      { exit }
+            found && /^\[/         { exit }
+            found                  { print }
+          ' CHANGELOG.md > notes.md
+          cat >> notes.md <<EOF
+
+          ## Install
+
+          **Arch Linux / any distro, prebuilt static binary** (x86_64 or aarch64):
+
+          \`\`\`bash
+          curl -LO https://github.com/${{ github.repository }}/releases/download/$TAG/tetromino-$version-linux-\$(uname -m).tar.gz
+          tar xzf tetromino-$version-linux-\$(uname -m).tar.gz
+          ./tetromino-$version-linux-\$(uname -m)/tetromino
+          \`\`\`
+
+          **Debian / Ubuntu:** download the \`.deb\` for your architecture, then
+          \`sudo apt install ./tetromino_${version}_amd64.deb\` (or \`_arm64\`).
+
+          **Fedora / openSUSE:** download the \`.rpm\`, then
+          \`sudo dnf install ./tetromino-$version-1.x86_64.rpm\` (or \`.aarch64\`).
+
+          **From source:** \`cmake -S . -B build && cmake --build build && sudo cmake --install build\`
+
+          Verify downloads with \`sha256sum -c SHA256SUMS.txt --ignore-missing\`.
+          EOF
+          cat notes.md
+
+      - name: Create or update the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" dist/* --verify-tag \
+              --title "Tetromino ${TAG#v}" --notes-file notes.md
+          fi

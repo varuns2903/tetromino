@@ -65,6 +65,28 @@ and putting the terminal back the way it was when the program exits.
 | `Q` / `Ctrl-C`     | Quit                         |
 | `Ctrl-Z`           | Suspend to the shell (`fg` to resume) |
 
+## Install
+
+Every [release](https://github.com/varuns2903/tetromino/releases/latest) has
+packages for **x86_64** and **aarch64 (arm64)**:
+
+| You use | Download | Install |
+|---|---|---|
+| Any Linux distro | `tetromino-<version>-linux-<arch>.tar.gz` | unpack and run `./tetromino`; static binary, no dependencies |
+| Debian, Ubuntu, Mint, … | `tetromino_<version>_amd64.deb` / `_arm64.deb` | `sudo apt install ./tetromino_*.deb` |
+| Fedora, openSUSE, RHEL, … | `tetromino-<version>-1.x86_64.rpm` / `.aarch64.rpm` | `sudo dnf install ./tetromino-*.rpm` |
+
+Packages install the game to `/usr/bin/tetromino` along with a man page
+(`man tetromino`). Checksums are in `SHA256SUMS.txt` on each release; see
+[CHANGELOG.md](CHANGELOG.md) for what changed.
+
+To install from source instead:
+
+```bash
+cmake -S . -B build && cmake --build build
+sudo cmake --install build          # /usr/local/bin/tetromino + man page
+```
+
 ## Building
 
 Requirements: Linux, CMake ≥ 3.20, and a C++20 compiler with `<format>` (GCC ≥ 13 or a recent Clang). Tested with GCC 16.2 and Clang 22.1.
@@ -87,6 +109,11 @@ cmake -S . -B build -DTETROMINO_WARNINGS_AS_ERRORS=OFF                        # 
 The build uses `-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow
 -Wold-style-cast` and several more warnings, with `-Werror` turned on. It builds
 without warnings on GCC 16 and Clang.
+
+Release artifacts (static binary tarball, `.deb`, `.rpm`, checksums) for the
+current architecture are built by `scripts/build-release.sh` into `dist/`;
+pushing a `v*` tag runs it for x86_64 and aarch64 in GitHub Actions and
+publishes the release.
 
 ### Tests
 
