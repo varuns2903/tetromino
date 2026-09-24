@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: GCC 14 (Release)
+            packages: g++-14
+            cxx: g++-14
+            build_type: Release
+            cmake_flags: ""
+          - name: Clang 18 (Release)
+            packages: clang-18 g++-14
+            cxx: clang++-18
+            build_type: Release
+            cmake_flags: ""
+          - name: GCC 14 (Debug, ASan + UBSan)
+            packages: g++-14
+            cxx: g++-14
+            build_type: Debug
+            cmake_flags: -DTETROMINO_SANITIZE=ON
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build ${{ matrix.packages }}
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          ${{ matrix.cmake_flags }}
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Terminal restoration checks (pty)
+        run: python3 scripts/pty_check.py build/tetromino
