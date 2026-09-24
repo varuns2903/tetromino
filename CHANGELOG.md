@@ -4,13 +4,33 @@ All notable changes to this project. Versions follow
 [Semantic Versioning](https://semver.org/). Each release's GitHub notes are
 taken from its section here.
 
-## [Unreleased]
+## [1.1.0] - 2026-09-24
 
 ### Added
+- Modes: **Endless** and **2-Minute** score attack, chosen in a new MODE
+  row of the setup menu (`--mode`)
+- Scoring depth: combos, back-to-back bonus, spins (full and mini), and
+  perfect-clear bonus
+- On-screen feedback for clears (QUAD!, SPIN DOUBLE, B2B, COMBO, PERFECT
+  CLEAR, points earned), a level-up flash, and a red board frame when the
+  stack gets close to the top
+- 3-2-1 countdown when resuming from pause
+- High scores per mode, board and difficulty, saved in
+  `$XDG_STATE_HOME/tetromino/highscores`; best shown in the menu and while
+  playing; NEW BEST! and statistics (time, pieces per second, quads, spins,
+  best combo) on the game-over screen
+- Light theme, chosen automatically from the terminal's background colour
+  (`--theme auto|dark|light`)
+- Held-key movement timed by the game on terminals that report key releases
+  (kitty keyboard protocol); `--das`, `--arr`, `--legacy-keys`
+- Attract mode: a built-in bot plays a demo when the menu is idle for 15 s
+  (`--no-demo`)
 - Arch Linux packages (`tetromino`, `tetromino-bin`) in `packaging/aur`
 - Homebrew formula: `brew install varuns2903/tap/tetromino`
 
 ### Changed
+- The score panel shows elapsed time (or time left in 2-Minute mode); the
+  board title shows the mode and difficulty
 - Release binaries are static-PIE with full RELRO (address-space layout
   randomisation and read-only relocations), still with no dependencies
 
@@ -43,5 +63,6 @@ First public release.
   Ctrl-Z suspend
 - Static x86_64 Linux binary
 
+[1.1.0]: https://github.com/varuns2903/tetromino/releases/tag/v1.1.0
 [1.0.1]: https://github.com/varuns2903/tetromino/releases/tag/v1.0.1
 [1.0.0]: https://github.com/varuns2903/tetromino/releases/tag/v1.0.0

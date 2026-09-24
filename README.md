@@ -16,25 +16,36 @@ and putting the terminal back the way it was when the program exits.
 
 ## Features
 
-- **Setup menu on the start screen**: pick a board size and a difficulty
-  before each game (see [Board sizes and difficulty](#board-sizes-and-difficulty))
+- **Setup menu on the start screen**: pick a mode (**Endless** or
+  **2-Minute** score attack), a board size and a difficulty before each game
+  (see [Modes, board sizes and difficulty](#modes-board-sizes-and-difficulty))
+- **High scores** per mode × board × difficulty, shown in the menu and while
+  playing, with **NEW BEST!** and full statistics on the game-over screen
+- **Attract mode**: leave the menu idle for 15 seconds and a built-in bot plays
+  a demo game; any key returns to the menu
 
 - Modern falling-block rules: 10×20 field with a hidden spawn buffer, all seven
   tetrominoes, **rotation with wall and floor kicks** (SRS kick tables), **7-bag randomizer**,
   hold (once per piece), a 5-piece next queue, ghost piece, lock delay with
   move-reset (limited to 15 resets), soft and hard drop
-- Standard scoring (100/300/500/800 × level, +1 per soft-dropped row, +2 per
-  hard-dropped row). The level goes up every 10 lines and gravity follows the
-  common modern speed curve
-- Line-clear animation (a flash, then a wipe out from the centre) with a
-  SINGLE / DOUBLE / TRIPLE / QUAD! callout
+- Scoring with **combos**, **back-to-back** bonuses, **spins** (rotating a T
+  into a tight slot) and **perfect clears** (see [Scoring](#scoring)). The level
+  goes up every 10 lines and gravity follows the common modern speed curve
+- **Held-key movement timed by the game** (initial delay, then a fast repeat)
+  on terminals that report key releases (Kitty, Foot, WezTerm, Ghostty,
+  Alacritty); other terminals use the OS key repeat
+- Feedback as you play: line-clear animation, "QUAD! / SPIN DOUBLE / B2B /
+  COMBO ×3 / PERFECT CLEAR" callouts with the points earned, a level-up
+  flash, a red frame when the stack gets close to the top, and a 3-2-1
+  countdown when you resume from pause
 - Start menu, pause, game over, restart and back-to-menu, all run by one explicit state machine
 - Responsive layout: the game is centred and the board is drawn at the
   largest size that fits (1×, 1.5×, 2×, 2.5×… using half-block pixels), with
   side-panel pieces that scale along, and shows a "terminal too small" screen (and auto-pauses) when
   the window is too small
 - 24-bit colour with automatic fallback to 256, 16 or no colours
-  (`NO_COLOR` is honoured)
+  (`NO_COLOR` is honoured), and a **light theme** chosen automatically when the
+  terminal has a light background
 - Diff-based rendering inside synchronized-update brackets, so there's no flicker
   and only changed cells are written. Moving a piece one column costs about 380
   bytes, compared with about 7 KB for a full repaint
@@ -44,7 +55,7 @@ and putting the terminal back the way it was when the program exits.
   re-entered on `fg`)
 - Auto-pause when the window loses focus
 - Reproducible games with `--seed`
-- 119 unit tests with no dependencies, plus a pty-based terminal-restoration check
+- 180 unit tests with no dependencies, plus a pty-based terminal-restoration check
 
 ## Controls
 
@@ -56,10 +67,10 @@ and putting the terminal back the way it was when the program exits.
 | `Z`                | Rotate counter-clockwise     |
 | `Space`            | Hard drop                    |
 | `C`                | Hold                         |
-| `P` / `Esc`        | Pause / resume (Esc quits from the start and game-over screens) |
+| `P` / `Esc`        | Pause / resume with a 3-2-1 countdown (Esc quits from the start and game-over screens) |
 | `R`                | Restart (paused or game over)|
 | `M`                | Back to the setup menu (paused or game over) |
-| `↑` `↓` / `W` `S`  | Menu: choose board / difficulty row |
+| `↑` `↓` / `W` `S`  | Menu: choose the mode / board / difficulty row |
 | `←` `→` / `A` `D`  | Menu: change the selected option |
 | `Enter`            | Start (start screen)         |
 | `Q` / `Ctrl-C`     | Quit                         |
@@ -137,12 +148,24 @@ arrow keys, resizes, `SIGTERM`, `SIGHUP`, and the crash paths `SIGSEGV` and
 ## Running
 
 ```
-tetromino [--size NAME] [--difficulty NAME] [--level N] [--seed N] [--color truecolor|256|16|mono] [--mono] [--fps N] [--debug]
+tetromino [--mode NAME] [--size NAME] [--difficulty NAME] [--level N] [--seed N]
+          [--theme auto|dark|light] [--color truecolor|256|16|mono] [--mono]
+          [--das MS] [--arr MS] [--legacy-keys] [--no-demo] [--fps N] [--debug]
 ```
 
-- `--size` and `--difficulty` pre-select the start-menu entries
-  (`small|classic|wide|tall`, `easy|normal|hard|expert`). You still confirm
-  with Enter.
+- `--mode`, `--size` and `--difficulty` pre-select the start-menu entries
+  (`endless|2-minute`, `small|classic|wide|tall`, `easy|normal|hard|expert`).
+  You still confirm with Enter.
+- `--theme` forces the dark or light theme. By default the game asks the
+  terminal for its background colour (and falls back to `$COLORFGBG`, then
+  dark).
+- `--das` / `--arr` set the held-key timing in milliseconds: the delay before a
+  held move starts repeating (default 167) and the time between repeats
+  (default 33; `0` slides straight to the wall). They apply on terminals that
+  report key releases; `--legacy-keys` turns that off and uses the OS repeat.
+- `--no-demo` disables the attract-mode demo.
+- High scores are kept in `$XDG_STATE_HOME/tetromino/highscores` (usually
+  `~/.local/state/tetromino/highscores`), a small text file.
 - `--seed N` gives the same piece sequence on every machine. The randomizer
   doesn't use the implementation-defined `std::uniform_int_distribution` or
   `std::shuffle`.
@@ -172,10 +195,10 @@ Konsole, xterm, tmux and screen.
 ```
 tetromino/
 ├── include/ src/
-│   ├── core/    Game (engine + state machine), GameState (snapshot), GameConfig, Presets, Types
-│   ├── game/    Board, Piece, PieceGenerator, Collision, Rotation, Scoring
-│   ├── tui/     Terminal, Input, Ansi, Color, Theme, ScreenBuffer, PixelCanvas, Panel, Layout, Renderer
-│   ├── util/    Logger, Random
+│   ├── core/    Game (engine + state machine), GameState (snapshot), GameConfig, Presets, Bot, Types
+│   ├── game/    Board, Piece, PieceGenerator, Collision, Rotation, Spin, Scoring
+│   ├── tui/     Terminal, Input, AutoRepeat, Ansi, Color, Theme, ScreenBuffer, PixelCanvas, Panel, Layout, Renderer
+│   ├── util/    Logger, Random, HighScores
 │   └── app/     Application (the main loop), Options (CLI)
 ├── tests/       one executable per area + a ~60-line test harness
 └── scripts/     pty_check.py
@@ -326,6 +349,20 @@ the layout picks the largest size that fits instead of jumping between 1× and
 2×. Monochrome terminals can't set two colours per cell, so they keep
 character rendering (`██`, `░░`, `·`) at whole multiples.
 
+### Held keys (`include/tui/AutoRepeat.hpp`)
+
+A classic terminal only reports key *presses*. Holding a key makes the OS
+send repeated presses, typically after a 500 ms pause, so a held ← feels
+sluggish. At startup the game sends three queries in one round-trip: the
+background colour (OSC 11), the kitty keyboard protocol flags (`CSI ? u`) and
+the device attributes (`CSI c`). Every terminal answers the last one, which
+tells the game it has seen all the answers without waiting for a timeout.
+If the terminal supports the kitty protocol, the game switches on repeat and
+release reporting (`CSI > 11 u`) and times held keys itself: move once on the
+press, then again after the delay, then every interval until the release. The
+mode is switched off again on exit, on a crash and around Ctrl-Z, like the rest
+of the terminal state.
+
 ### The game loop (`src/app/Application.cpp`)
 
 ```
@@ -356,10 +393,15 @@ outside the walls or floor or already filled. Movement, every wall-kick test,
 gravity, hard drop, the ghost piece and spawning all call `fits()`; nothing else
 checks for collisions.
 
-## Board sizes and difficulty
+## Modes, board sizes and difficulty
 
 The start screen is a small setup menu. `↑`/`↓` pick a row, `←`/`→` change
 it, and `Enter` starts. `M` from the pause or game-over screen returns to it.
+
+| Mode     | Goal |
+|----------|------|
+| Endless  | Play until the stack reaches the top |
+| 2-Minute | Score as much as you can in two minutes of play (the clock stops while paused) |
 
 | Board   | Size (columns × rows) |
 |---------|-----------------------|
@@ -382,6 +424,31 @@ switches, lock delay), and `core::configFor()` applies it to the base
 `GameConfig` when a game starts. The front end reads what's enabled from
 `GameState::rules` and shows `off` in the HOLD and NEXT panels when a feature
 is disabled.
+
+## Scoring
+
+Each locked piece scores, multiplied by the level:
+
+| Clear | Points | | Spin (T rotated into a tight slot) | Points |
+|---|---|---|---|---|
+| Single | 100 | | Spin, no lines | 400 |
+| Double | 300 | | Spin single | 800 |
+| Triple | 500 | | Spin double | 1200 |
+| Quad (4 lines) | 800 | | Spin triple | 1600 |
+
+- **Back-to-back**: a quad or a line-clearing spin right after another one
+  (with only non-clearing pieces in between) scores ×1.5.
+- **Combo**: consecutive pieces that each clear lines add 50 × combo × level.
+- **Perfect clear**: emptying the whole board adds 800 / 1200 / 1800 / 2000
+  (for 1–4 lines) × level.
+- Soft drop scores 1 point per row, hard drop 2.
+
+A spin uses the usual three-corner rule: the T's last successful action was a
+rotation, and at least three of the four cells diagonal to its centre are
+blocked (walls count). If both corners it points towards are blocked, or the
+rotation needed the last-resort kick, it's a full spin; otherwise a mini spin
+(100 / 200 / 400 points). The scoring rules are data in `ScoringRules`, and
+`Scoring::award()` computes each piece's points from what it did.
 
 ## Game mechanics
 
@@ -408,14 +475,12 @@ clear delay, gravity curve, points and lines per level.
 
 ## Roadmap / future improvements
 
-- [ ] Spin-move detection and combo scoring (the hook is `Scoring`)
-- [ ] DAS/ARR (auto-repeat tuned by the game instead of the OS). This needs
-      key-release events, for example from the kitty keyboard protocol (`CSI > 1 u`)
-- [ ] High-score table in `$XDG_STATE_HOME`
-- [ ] 180° rotation, a configurable keymap, and themes loaded from a file
+- [ ] 180° rotation, a configurable keymap and settings file, and themes loaded from a file
 - [ ] An ncurses renderer next to the ANSI one, to show that the front end can
       be swapped
-- [ ] More modes: endless, a 40-line race, and a 2-minute score attack
+- [ ] More modes: a 40-line race, a relaxed mode without gravity, and a dig
+      mode that starts on messy rows
+- [ ] A daily challenge (everyone gets the same pieces that day)
 - [ ] Replays: `--seed` plus a recorded action/time log is enough to replay a game exactly
 
 ## License

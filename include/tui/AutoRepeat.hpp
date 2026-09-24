@@ -52,7 +52,8 @@ private:
         core::Duration timer{};
     };
 
-    Held* heldFor(core::Action action);
+    Held* heldFor(core::Action action);  // nullptr for untracked actions
+    Held& side(core::Action direction);  // MoveLeft -> left_, otherwise right_
     void restart(Held& key);
 
     RepeatTiming timing_;

@@ -1,4 +1,6 @@
-# Demo recording for the README. Don't run vhs on this directly; use
+# Demo recording for the README. The launch line uses a throwaway
+# XDG_STATE_HOME so recording never touches your real high-score file.
+# Don't run vhs on this directly; use
 #
 #   scripts/make-demo.sh
 #
@@ -22,13 +24,16 @@ Set Theme { "name": "Tetromino", "background": "#1e1e1e", "foreground": "#dcdce1
 
 # Launch without showing the command
 Hide
-Type "./build/tetromino --seed 37 --color truecolor"
+Type "XDG_STATE_HOME=$(mktemp -d) ./build/tetromino --seed 37 --theme dark --color truecolor --no-demo"
 Enter
-Sleep 700ms
+Sleep 900ms
 Show
 
-# Setup menu: browse the options, then start with Classic / Normal
+# Setup menu: browse each row, then start with Endless / Classic / Normal
 Sleep 1.5s
+Right@500ms
+Left@400ms
+Down@400ms
 Right@500ms 2
 Left@350ms 2
 Down@400ms

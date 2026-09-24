@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(tetromino
-    VERSION 1.0.1
+    VERSION 1.1.0
     DESCRIPTION "Falling-block puzzle game for the Linux terminal: termios + ANSI escape sequences, no TUI framework"
     HOMEPAGE_URL "https://github.com/varuns2903/tetromino"
     LANGUAGES CXX)

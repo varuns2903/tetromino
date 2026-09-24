@@ -1,8 +1,10 @@
-.TH TETROMINO 6 "2026-09-24" "tetromino 1.0.1" "Games"
+.TH TETROMINO 6 "2026-09-24" "tetromino 1.1.0" "Games"
 .SH NAME
 tetromino \- falling-block puzzle game for the terminal
 .SH SYNOPSIS
 .B tetromino
+.RB [ \-\-mode
+.IR NAME ]
 .RB [ \-\-size
 .IR NAME ]
 .RB [ \-\-difficulty
@@ -11,9 +13,17 @@ tetromino \- falling-block puzzle game for the terminal
 .IR N ]
 .RB [ \-\-seed
 .IR N ]
+.RB [ \-\-theme
+.IR THEME ]
 .RB [ \-\-color
 .IR MODE ]
 .RB [ \-\-mono ]
+.RB [ \-\-das
+.IR MS ]
+.RB [ \-\-arr
+.IR MS ]
+.RB [ \-\-legacy\-keys ]
+.RB [ \-\-no\-demo ]
 .RB [ \-\-fps
 .IR N ]
 .RB [ \-\-debug ]
@@ -27,11 +37,21 @@ Seven kinds of four-square pieces fall into a well; move and rotate them to
 fill complete rows, which then disappear.
 The game ends when the stack reaches the top.
 .PP
-The start screen is a setup menu where you choose a board size and a
+The start screen is a setup menu where you choose a mode, a board size and a
 difficulty.
+Your best score for each combination is kept.
+If the menu is left alone for 15 seconds, a computer player starts a demo game;
+press any key to return to the menu.
 The board is drawn at the largest size that fits the terminal, and the
 terminal is restored when the game exits, including on errors and signals.
 .SH OPTIONS
+.TP
+.BI \-\-mode " NAME"
+Pre-select the mode:
+.B endless
+(default; play until the stack reaches the top) or
+.B 2\-minute
+(score as much as possible in two minutes of play).
 .TP
 .BI \-\-size " NAME"
 Pre-select the board in the start menu:
@@ -65,6 +85,16 @@ The difficulty may add further levels.
 Use a fixed random seed.
 The same seed gives the same sequence of pieces on every machine.
 .TP
+.BI \-\-theme " THEME"
+.B dark
+or
+.B light
+colours, or
+.B auto
+(default): ask the terminal for its background colour, then fall back to
+.BR COLORFGBG ,
+then dark.
+.TP
 .BI \-\-color " MODE"
 Force the colour mode:
 .BR truecolor ,
@@ -78,6 +108,23 @@ By default it is detected from
 .B \-\-mono
 Same as
 .BR "\-\-color mono" .
+.TP
+.BI \-\-das " MS"
+Delay before a held move key starts repeating (default 167 ms).
+.TP
+.BI \-\-arr " MS"
+Time between repeated moves while a key is held (default 33 ms; 0 slides
+straight to the wall).
+Both apply only on terminals that report key releases (the kitty keyboard
+protocol, supported by Kitty, Foot, WezTerm, Ghostty and Alacritty);
+elsewhere the operating system's key repeat is used.
+.TP
+.B \-\-legacy\-keys
+Use the operating system's key repeat even if the terminal reports key
+releases.
+.TP
+.B \-\-no\-demo
+Don't start the demo game when the menu is left idle.
 .TP
 .BI \-\-fps " N"
 Maximum render rate, 10\-240 (default 60).
@@ -126,7 +173,7 @@ Hard drop.
 Hold the current piece (if the difficulty allows it).
 .TP
 .BR P " or " Esc
-Pause and resume.
+Pause, and resume after a 3-2-1 countdown.
 .TP
 .B R
 Restart (when paused or after game over).
@@ -151,9 +198,17 @@ Expert	0.35\(mu	+4	no	0	no
 .TE
 .PP
 The level rises every 10 cleared lines.
-Clearing 1, 2, 3 or 4 lines at once scores 100, 300, 500 or 800 points
-multiplied by the level; soft drops score 1 point per row and hard drops
-2 points per row.
+.SH SCORING
+Points are multiplied by the level.
+Clearing 1, 2, 3 or 4 lines at once scores 100, 300, 500 or 800.
+A T piece rotated into a tight slot (at least three of the four corners
+around its centre blocked) is a spin: 400 with no lines, 800, 1200 or 1600
+with 1, 2 or 3 lines; a mini spin scores 100, 200 or 400.
+A four-line clear or line-clearing spin that follows another one scores
+\(mu1.5 (back-to-back).
+Consecutive pieces that clear lines add 50 \(mu combo count.
+Emptying the board adds 800, 1200, 1800 or 2000 (perfect clear).
+Soft drops score 1 point per row and hard drops 2.
 .SH ENVIRONMENT
 .TP
 .B NO_COLOR
@@ -170,6 +225,9 @@ If set to a value other than 0, enables debug logging, like
 Base directory for the debug log (default
 .IR ~/.local/state ).
 .SH FILES
+.TP
+.I $XDG_STATE_HOME/tetromino/highscores
+Best score for each mode, board and difficulty.
 .TP
 .I $XDG_STATE_HOME/tetromino/tetromino.log
 Debug log, written only with

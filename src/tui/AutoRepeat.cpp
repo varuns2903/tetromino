@@ -23,6 +23,10 @@ AutoRepeat::Held* AutoRepeat::heldFor(Action action) {
     }
 }
 
+AutoRepeat::Held& AutoRepeat::side(Action direction) {
+    return direction == Action::MoveLeft ? left_ : right_;
+}
+
 void AutoRepeat::restart(Held& key) {
     key.repeating = false;
     key.timer = Duration::zero();
@@ -51,7 +55,7 @@ void AutoRepeat::release(Action action) {
         // Hand control back to the other direction if it's still held; it
         // starts its delay again, like a fresh press.
         const Action other = action == Action::MoveLeft ? Action::MoveRight : Action::MoveLeft;
-        Held& otherKey = *heldFor(other);
+        Held& otherKey = side(other);
         if (otherKey.down) {
             horizontal_ = other;
             restart(otherKey);
@@ -70,7 +74,7 @@ void AutoRepeat::releaseAll() {
 
 void AutoRepeat::update(Duration dt, std::vector<Action>& out) {
     if (horizontal_) {
-        Held& key = *heldFor(*horizontal_);
+        Held& key = side(*horizontal_);
         key.timer += dt;
         int emitted = 0;
         if (!key.repeating && key.timer >= timing_.delay) {
