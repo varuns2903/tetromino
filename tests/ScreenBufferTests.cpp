@@ -304,3 +304,154 @@ TEST(pixel_canvas_blits_half_blocks) {
     CHECK(buf.at(1, 2).style.fg == blue);
     CHECK(buf.at(2, 2) == Cell{});  // fully transparent: untouched
 }
+
+// --- Feedback, countdown, game over, danger, menu ---------------------------
+
+namespace {
+
+std::string screenText(const ScreenBuffer& f) {
+    std::string all;
+    for (int y = 0; y < f.height(); ++y) {
+        // Keep non-ASCII glyphs recognisable enough for "×".
+        for (int x = 0; x < f.width(); ++x) {
+            const char32_t ch = f.at(x, y).ch;
+            all += ch < 0x80 ? static_cast<char>(ch) : (ch == U'×' ? 'x' : '#');
+        }
+        all += '\n';
+    }
+    return all;
+}
+
+core::GameState playingState() {
+    core::GameState s;
+    s.mode = core::GameMode::Playing;
+    s.active = game::spawnPiece(core::PieceType::T, 10);
+    return s;
+}
+
+}  // namespace
+
+TEST(feedback_shows_clear_bonus_and_points) {
+    tui::Renderer r{tui::Theme::standard(), ColorMode::TrueColor};
+    r.resize({80, 24});
+    core::GameState s = playingState();
+    s.feedback = core::Feedback{1, 4, game::SpinKind::None, 2, true, false, 2400, false, core::Duration::zero()};
+    r.render(s);
+    const std::string all = screenText(r.frame());
+    CHECK(contains(all, "QUAD!"));
+    CHECK(contains(all, "+2,400"));
+    CHECK(contains(all, "B2B # COMBO x2"));  // '·' shows as '#'
+
+    s.feedback.age = core::kFeedbackDuration;  // expired
+    r.render(s);
+    CHECK(!contains(screenText(r.frame()), "QUAD!"));
+}
+
+TEST(feedback_names_spins) {
+    tui::Renderer r{tui::Theme::standard(), ColorMode::TrueColor};
+    r.resize({120, 40});  // room for every line
+    core::GameState s = playingState();
+    s.feedback = core::Feedback{1, 2, game::SpinKind::Full, 0, false, true, 1200, true, core::Duration::zero()};
+    s.stats.level = 3;
+    r.render(s);
+    const std::string all = screenText(r.frame());
+    CHECK(contains(all, "SPIN DOUBLE"));
+    CHECK(contains(all, "PERFECT CLEAR!"));
+    CHECK(contains(all, "LEVEL 3"));
+}
+
+TEST(countdown_draws_a_big_digit) {
+    tui::Renderer r{tui::Theme::standard(), ColorMode::TrueColor};
+    r.resize({80, 24});
+    core::GameState s = playingState();
+    s.mode = core::GameMode::Countdown;
+    s.countdown = std::chrono::milliseconds{2300};  // shows "3"
+    r.render(s);
+    CHECK(contains(screenText(r.frame()), "get ready"));
+}
+
+TEST(game_over_shows_reason_best_and_stats) {
+    tui::Renderer r{tui::Theme::standard(), ColorMode::TrueColor};
+    r.resize({80, 24});
+    core::GameState s = playingState();
+    s.mode = core::GameMode::GameOver;
+    s.endReason = core::EndReason::TimeUp;
+    s.stats.score = 12450;
+    s.stats.pieces = 120;
+    s.stats.playTime = std::chrono::seconds{120};
+    r.render(s, tui::HudInfo{12450, true, false});
+    const std::string all = screenText(r.frame());
+    CHECK(contains(all, "TIME UP"));
+    CHECK(contains(all, "NEW BEST!"));
+    CHECK(contains(all, "12,450"));
+    CHECK(contains(all, "2:00"));
+    CHECK(contains(all, "1.00"));  // pieces per second
+
+    s.endReason = core::EndReason::ToppedOut;
+    r.render(s, tui::HudInfo{20000, false, false});
+    const std::string topped = screenText(r.frame());
+    CHECK(contains(topped, "GAME OVER"));
+    CHECK(!contains(topped, "NEW BEST!"));
+}
+
+TEST(board_title_names_mode_and_difficulty) {
+    tui::Renderer r{tui::Theme::standard(), ColorMode::TrueColor};
+    r.resize({80, 24});
+    core::GameState s = playingState();
+    s.setup.gameType = 1;
+    s.setup.difficulty = 2;
+    r.render(s);
+    CHECK(contains(screenText(r.frame()), "2-MINUTE # HARD"));  // '·' shows as '#'
+    r.render(s, tui::HudInfo{std::nullopt, false, true});
+    CHECK(contains(screenText(r.frame()), " DEMO "));
+}
+
+TEST(timed_mode_shows_time_left) {
+    tui::Renderer r{tui::Theme::standard(), ColorMode::TrueColor};
+    r.resize({80, 24});
+    core::GameState s = playingState();
+    s.rules.timeLimit = std::chrono::seconds{120};
+    s.stats.playTime = std::chrono::milliseconds{115500};
+    r.render(s);
+    const std::string all = screenText(r.frame());
+    CHECK(contains(all, "LEFT"));
+    CHECK(contains(all, "0:04.5"));
+}
+
+TEST(frame_turns_red_when_the_stack_is_high) {
+    tui::Renderer r{tui::Theme::standard(), ColorMode::TrueColor};
+    r.resize({80, 24});
+    core::GameState s = playingState();
+    r.render(s);
+    const tui::Layout l = r.layout();
+    const tui::Color calm = r.frame().at(l.board.x, l.board.y + 5).style.fg;
+    s.board.set({0, game::Board::kHiddenRows + 2}, core::CellType::Z);
+    r.render(s);
+    const tui::Color alarmed = r.frame().at(l.board.x, l.board.y + 5).style.fg;
+    CHECK(!(calm == alarmed));
+    CHECK(alarmed == tui::Theme::standard().danger().fg);
+}
+
+TEST(menu_shows_mode_and_best) {
+    tui::Renderer r{tui::Theme::standard(), ColorMode::TrueColor};
+    r.resize({80, 24});
+    core::GameState s;
+    r.render(s, tui::HudInfo{4321, false, false});
+    const std::string all = screenText(r.frame());
+    CHECK(contains(all, "MODE"));
+    CHECK(contains(all, "Endless"));
+    CHECK(contains(all, "BEST  4,321"));
+    r.render(s);
+    CHECK(contains(screenText(r.frame()), "no best score yet"));
+}
+
+TEST(feedback_keeps_the_important_lines_when_space_is_short) {
+    tui::Renderer r{tui::Theme::standard(), ColorMode::TrueColor};
+    r.resize({58, 22});  // minimum size: only a few rows under NEXT
+    core::GameState s = playingState();
+    s.feedback = core::Feedback{1, 4, game::SpinKind::None, 3, true, true, 9000, true, core::Duration::zero()};
+    r.render(s);
+    const std::string all = screenText(r.frame());
+    CHECK(contains(all, "QUAD!"));
+    CHECK(contains(all, "+9,000"));
+}

@@ -58,6 +58,10 @@ public:
     [[nodiscard]] const Style& overlay() const { return overlay_; }
     [[nodiscard]] const Style& overlayFrame() const { return overlayFrame_; }
     [[nodiscard]] const Style& warning() const { return warning_; }
+    // The stack is close to the top; game over titles.
+    [[nodiscard]] const Style& danger() const { return danger_; }
+    // Roughly the terminal background, for fading text out.
+    [[nodiscard]] Color panelBackground() const { return panelBg_; }
     [[nodiscard]] Color wellBackground() const { return wellBg_; }
 
 private:
@@ -75,6 +79,8 @@ private:
     Style overlay_{};
     Style overlayFrame_{};
     Style warning_{};
+    Style danger_{};
+    Color panelBg_{};
 };
 
 }  // namespace tetromino::tui

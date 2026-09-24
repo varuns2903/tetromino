@@ -38,6 +38,8 @@ Theme Theme::standard() {
     t.overlay_ = Style{Color::rgb(230, 230, 245), Color::rgb(24, 26, 38), false, false};
     t.overlayFrame_ = Style{Color::rgb(80, 220, 170), Color::rgb(24, 26, 38), true, false};
     t.warning_ = Style{Color::rgb(245, 190, 60), {}, true, false};
+    t.danger_ = Style{Color::rgb(240, 80, 80), {}, true, false};
+    t.panelBg_ = Color::rgb(28, 28, 32);
     return t;
 }
 
@@ -55,6 +57,7 @@ Theme Theme::monochrome() {
     t.overlay_ = Style{};
     t.overlayFrame_ = Style{{}, {}, true, false};
     t.warning_ = Style{{}, {}, true, false};
+    t.danger_ = Style{{}, {}, true, false};
     return t;
 }
 

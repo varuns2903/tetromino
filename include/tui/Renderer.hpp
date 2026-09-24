@@ -91,7 +91,8 @@ private:
 
     Theme theme_;
     ColorMode mode_;
-    HudInfo hud_;  // for the frame being rendered
+    HudInfo hud_;             // for the frame being rendered
+    std::string boardTitle_;  // reused every frame
     TerminalSize terminal_{};
     Layout layout_;
     bool layoutValid_ = false;

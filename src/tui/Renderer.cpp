@@ -5,6 +5,7 @@
 #include <charconv>
 #include <chrono>
 #include <cmath>
+#include <format>
 #include <string_view>
 
 #include "core/GameState.hpp"
@@ -24,7 +25,6 @@ using game::Board;
 
 namespace {
 
-constexpr std::string_view kBoardTitle = "TETROMINO";
 constexpr int kLinesPerLevel = 10;
 
 // Number formatting into a caller-provided buffer: no heap allocation per frame.
@@ -48,6 +48,55 @@ std::string_view formatThousands(NumberBuffer& buf, std::uint64_t value) {
         buf[out++] = d[i];
     }
     return {buf.data(), out};
+}
+
+// std::format into a fixed buffer (truncating if too long): no allocation.
+template <std::size_t N, typename... Args>
+std::string_view formatInto(std::array<char, N>& buf, std::format_string<Args...> fmt, Args&&... args) {
+    const auto result = std::format_to_n(buf.data(), static_cast<std::ptrdiff_t>(N), fmt, std::forward<Args>(args)...);
+    return {buf.data(), static_cast<std::size_t>(std::min(result.out - buf.data(), static_cast<std::ptrdiff_t>(N)))};
+}
+
+// 83.4 s -> "1:23" (or "1:23.4" with tenths).
+std::string_view formatClock(NumberBuffer& buf, core::Duration d, bool tenths) {
+    const auto totalTenths = std::chrono::duration_cast<std::chrono::milliseconds>(d).count() / 100;
+    const long long minutes = totalTenths / 600;
+    const long long seconds = (totalTenths / 10) % 60;
+    const long long tenth = totalTenths % 10;
+    return tenths ? formatInto(buf, "{}:{:02}.{}", minutes, seconds, tenth) : formatInto(buf, "{}:{:02}", minutes, seconds);
+}
+
+// 3x5 block digits for the resume countdown.
+constexpr std::array<std::array<std::string_view, 5>, 10> kDigits{{
+    {"###", "#.#", "#.#", "#.#", "###"}, {".#.", "##.", ".#.", ".#.", "###"}, {"###", "..#", "###", "#..", "###"},
+    {"###", "..#", "###", "..#", "###"}, {"#.#", "#.#", "###", "..#", "..#"}, {"###", "#..", "###", "..#", "###"},
+    {"###", "#..", "###", "#.#", "###"}, {"###", "..#", "..#", "..#", "..#"}, {"###", "#.#", "###", "#.#", "###"},
+    {"###", "#.#", "###", "..#", "###"},
+}};
+
+// True if the stack reaches into the top few visible rows.
+bool inDanger(const GameState& state) {
+    const int dangerRows = std::max(4, state.board.visibleHeight() * 3 / 10);
+    for (int y = Board::kHiddenRows; y < Board::kHiddenRows + dangerRows; ++y) {
+        if (!state.board.isRowEmpty(y)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string_view clearName(const core::Feedback& f) {
+    using game::SpinKind;
+    static constexpr std::array<std::string_view, 5> kPlain{"", "SINGLE", "DOUBLE", "TRIPLE", "QUAD!"};
+    static constexpr std::array<std::string_view, 4> kSpin{"SPIN", "SPIN SINGLE", "SPIN DOUBLE", "SPIN TRIPLE"};
+    static constexpr std::array<std::string_view, 4> kMini{"MINI SPIN", "MINI SINGLE", "MINI DOUBLE", "MINI DOUBLE"};
+    const auto n = static_cast<std::size_t>(std::clamp(f.lines, 0, 4));
+    switch (f.spin) {
+    case SpinKind::Full: return kSpin[std::min<std::size_t>(n, 3)];
+    case SpinKind::Mini: return kMini[std::min<std::size_t>(n, 3)];
+    case SpinKind::None: break;
+    }
+    return kPlain[n];
 }
 
 PieceType pieceOf(core::CellType cell) {
@@ -373,8 +422,33 @@ void Renderer::drawBoardCell(int col, int row, const CellGlyph& glyph) {
 }
 
 void Renderer::drawBoard(const GameState& state, bool hideContents) {
-    drawPanelCentredTitle(back_, layout_.board, kBoardTitle,
-                          PanelStyle{BorderStyle::Rounded, theme_.boardFrame(), theme_.accent(), false, {}});
+    // Title: what's being played ("2-MINUTE · HARD"); the demo is labelled.
+    boardTitle_.clear();
+    if (hud_.attract) {
+        boardTitle_ = "DEMO";
+    } else {
+        for (const char c : core::kGameTypes[state.setup.gameType].name) {
+            boardTitle_ += static_cast<char>(c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c);
+        }
+        boardTitle_ += " · ";
+        for (const char c : core::kDifficulties[state.setup.difficulty].name) {
+            boardTitle_ += static_cast<char>(c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c);
+        }
+    }
+
+    Style frame = theme_.boardFrame();
+    Style title = theme_.accent();
+    const core::Feedback& f = state.feedback;
+    const bool levelUpFlash = f.levelUp && f.age < std::chrono::milliseconds{900} &&
+                              (std::chrono::duration_cast<std::chrono::milliseconds>(f.age).count() / 150) % 2 == 0;
+    if (levelUpFlash) {
+        frame = theme_.warning();
+        title = theme_.warning();
+    } else if (state.mode == GameMode::Playing && inDanger(state)) {
+        frame = theme_.danger();
+        title = theme_.danger();
+    }
+    drawPanelCentredTitle(back_, layout_.board, boardTitle_, PanelStyle{BorderStyle::Rounded, frame, title, false, {}});
     if (layout_.halfBlocks) {
         drawBoardPixels(state, hideContents);
     } else {
@@ -589,8 +663,17 @@ void Renderer::drawStats(const GameState& state) {
                    theme_.label(), theme_.value());
     drawLabelValue(back_, x, r.y + 4, w, "LINES", formatInt(buf, static_cast<std::uint64_t>(state.stats.lines)),
                    theme_.label(), theme_.value());
-    drawLabelValue(back_, x, r.y + 5, w, "MODE", core::kDifficulties[state.setup.difficulty].name, theme_.label(),
-                   theme_.value());
+    // Elapsed time, or time left in a timed mode (amber for the last 10 s).
+    NumberBuffer clock{};
+    if (state.rules.timeLimit) {
+        const core::Duration left = state.timeLeft();
+        const bool urgent = left < std::chrono::seconds{10};
+        drawLabelValue(back_, x, r.y + 5, w, "LEFT", formatClock(clock, left, true), theme_.label(),
+                       urgent ? theme_.warning() : theme_.value());
+    } else {
+        drawLabelValue(back_, x, r.y + 5, w, "TIME", formatClock(clock, state.stats.playTime, false), theme_.label(),
+                       theme_.value());
+    }
 
     // Progress towards the next level.
     const int filled = (state.stats.lines % kLinesPerLevel) * w / kLinesPerLevel;
@@ -670,19 +753,57 @@ void Renderer::drawNext(const GameState& state) {
 }
 
 void Renderer::drawMessage(const GameState& state) {
-    if (!state.isClearingLines() || layout_.message.h < 2) {
+    const core::Feedback& f = state.feedback;
+    const Rect& r = layout_.message;
+    if (f.id == 0 || f.age >= core::kFeedbackDuration || r.h < 2 || state.mode != GameMode::Playing) {
         return;
     }
-    static constexpr std::array<std::string_view, 5> kNames{"", "SINGLE", "DOUBLE", "TRIPLE", "QUAD!"};
-    const std::size_t n = std::min(state.clearingRows.size(), kNames.size() - 1);
-    const Rect& r = layout_.message;
-    Style s = n == 4 ? theme_.warning() : theme_.accent();
-    drawCentred(back_, r.x, r.w, r.y + 1, kNames[n], s);
-}
+    // Fade out over the last 40% of the display time.
+    const float t = static_cast<float>(f.age.count()) / static_cast<float>(core::kFeedbackDuration.count());
+    const float fade = std::clamp((t - 0.6F) / 0.4F, 0.0F, 1.0F);
+    const auto faded = [&](Style s) {
+        if (!theme_.isMonochrome()) {
+            s.fg = s.fg.blended(theme_.panelBackground(), fade);
+        }
+        return s;
+    };
+    const Style headline = faded(f.lines == 4 || f.spin != game::SpinKind::None ? theme_.warning() : theme_.accent());
+    const Style detail = faded(theme_.value());
+    const Style bonus = faded(theme_.accent());
 
-// ---------------------------------------------------------------------------
-// Overlays
-// ---------------------------------------------------------------------------
+    int y = r.y + 1;
+    const int last = r.bottom() - 1;
+    const auto line = [&](std::string_view text, const Style& style) {
+        if (y <= last && !text.empty()) {
+            drawCentred(back_, r.x, r.w, y++, text, style);
+        }
+    };
+
+    // Most important first: small terminals only have room for a few lines.
+    line(clearName(f), headline);
+    if (f.points > 0) {
+        NumberBuffer n{};
+        std::array<char, 40> text{};
+        line(formatInto(text, "+{}", formatThousands(n, f.points)), detail);
+    }
+    if (f.perfectClear) {
+        line("PERFECT CLEAR!", headline);
+    }
+    if (f.backToBack || f.combo > 0) {
+        std::array<char, 40> text{};
+        if (f.backToBack && f.combo > 0) {
+            line(formatInto(text, "B2B · COMBO ×{}", f.combo), bonus);
+        } else if (f.backToBack) {
+            line("BACK-TO-BACK", bonus);
+        } else {
+            line(formatInto(text, "COMBO ×{}", f.combo), bonus);
+        }
+    }
+    if (f.levelUp) {
+        std::array<char, 32> text{};
+        line(formatInto(text, "LEVEL {}", state.stats.level), headline);
+    }
+}
 
 Rect Renderer::drawOverlayBox(int innerHeight, std::string_view title) {
     // As wide as the well, but at least 22 columns so the text fits even on
@@ -704,11 +825,24 @@ void Renderer::drawKeyHint(int x, int y, std::string_view key, std::string_view 
 }
 
 void Renderer::drawCountdownOverlay(const GameState& state) {
-    const auto seconds = std::chrono::ceil<std::chrono::seconds>(state.countdown).count();
-    const Rect in = drawOverlayBox(3, "");
-    NumberBuffer buf{};
-    const std::string_view n = formatInt(buf, static_cast<std::uint64_t>(std::max<long long>(seconds, 1)));
-    drawCentred(back_, in.x, in.w, in.y + 1, n, theme_.overlayFrame());
+    // A big block digit over the board (the stack stays visible), counting
+    // down to the resume.
+    const auto seconds = std::clamp<long long>(std::chrono::ceil<std::chrono::seconds>(state.countdown).count(), 1, 9);
+    const Rect in = drawOverlayBox(8, "");
+    const auto& digit = kDigits[static_cast<std::size_t>(seconds)];
+    const int x0 = in.x + (in.w - 6) / 2;
+    Style ink = theme_.overlayFrame();
+    for (int row = 0; row < 5; ++row) {
+        for (int col = 0; col < 3; ++col) {
+            if (digit[static_cast<std::size_t>(row)][static_cast<std::size_t>(col)] == '#') {
+                back_.set(x0 + col * 2, in.y + 1 + row, U'█', ink);
+                back_.set(x0 + col * 2 + 1, in.y + 1 + row, U'█', ink);
+            }
+        }
+    }
+    Style hint = theme_.muted();
+    hint.bg = theme_.overlay().bg;
+    drawCentred(back_, in.x, in.w, in.y + 7, "get ready", hint);
 }
 
 void Renderer::drawPauseOverlay() {
@@ -723,28 +857,45 @@ void Renderer::drawPauseOverlay() {
 }
 
 void Renderer::drawGameOverOverlay(const GameState& state) {
-    const Rect in = drawOverlayBox(12, "");
+    const core::Stats& st = state.stats;
+    const Rect in = drawOverlayBox(16, "");
     Style title = theme_.overlayFrame();
-    title.fg = theme_.isMonochrome() ? Color{} : Color::rgb(240, 80, 80);
-    drawCentred(back_, in.x, in.w, in.y + 1, "GAME OVER", title);
+    title.fg = theme_.isMonochrome() ? Color{} : theme_.danger().fg;
+    drawCentred(back_, in.x, in.w, in.y + 1, state.endReason == core::EndReason::TimeUp ? "TIME UP" : "GAME OVER",
+                title);
+    if (hud_.newBest) {
+        Style best = theme_.warning();
+        best.bg = theme_.overlay().bg;
+        drawCentred(back_, in.x, in.w, in.y + 2, "NEW BEST!", best);
+    }
 
     Style label = theme_.overlay();
     Style value = theme_.overlay();
     value.bold = true;
+    Style minor = theme_.muted();
+    minor.bg = theme_.overlay().bg;
     const int x = in.x + 2;
     const int w = in.w - 4;
     NumberBuffer buf{};
-    drawLabelValue(back_, x, in.y + 3, w, "Score", formatThousands(buf, state.stats.score), label, value);
-    drawLabelValue(back_, x, in.y + 4, w, "Lines", formatInt(buf, static_cast<std::uint64_t>(state.stats.lines)),
-                   label, value);
-    drawLabelValue(back_, x, in.y + 5, w, "Level", formatInt(buf, static_cast<std::uint64_t>(state.stats.level)),
-                   label, value);
-    drawLabelValue(back_, x, in.y + 6, w, "Mode", core::kDifficulties[state.setup.difficulty].name, label, value);
+    drawLabelValue(back_, x, in.y + 3, w, "Score", formatThousands(buf, st.score), label, value);
+    drawLabelValue(back_, x, in.y + 4, w, "Lines", formatInt(buf, static_cast<std::uint64_t>(st.lines)), label, value);
+    drawLabelValue(back_, x, in.y + 5, w, "Level", formatInt(buf, static_cast<std::uint64_t>(st.level)), label, value);
+    drawLabelValue(back_, x, in.y + 6, w, "Time", formatClock(buf, st.playTime, false), label, value);
+
+    // Pieces per second.
+    const double secs = std::chrono::duration<double>(st.playTime).count();
+    std::array<char, 16> pps{};
+    drawLabelValue(back_, x, in.y + 8, w, "Pieces/s",
+                   formatInto(pps, "{:.2f}", secs > 0.5 ? static_cast<double>(st.pieces) / secs : 0.0), minor, label);
+    drawLabelValue(back_, x, in.y + 9, w, "Quads", formatInt(buf, static_cast<std::uint64_t>(st.quads)), minor, label);
+    drawLabelValue(back_, x, in.y + 10, w, "Spins", formatInt(buf, static_cast<std::uint64_t>(st.spins)), minor, label);
+    drawLabelValue(back_, x, in.y + 11, w, "Best combo", formatInt(buf, static_cast<std::uint64_t>(st.maxCombo)),
+                   minor, label);
 
     const int kx = in.x + (in.w - 12) / 2;
-    drawKeyHint(kx, in.y + 8, "R", "restart");
-    drawKeyHint(kx, in.y + 9, "M", "menu");
-    drawKeyHint(kx, in.y + 10, "Q", "quit");
+    drawKeyHint(kx, in.y + 13, "R", "restart");
+    drawKeyHint(kx, in.y + 14, "M", "menu");
+    drawKeyHint(kx, in.y + 15, "Q", "quit");
 }
 
 }  // namespace tetromino::tui
