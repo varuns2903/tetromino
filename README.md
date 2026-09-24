@@ -12,30 +12,7 @@ It's a playable game, and it's also a worked example of how terminal apps like
 escape-sequence rendering, double-buffered screen diffing, resize handling,
 and putting the terminal back the way it was when the program exits.
 
-```
-           ╭─ HOLD ────────╮ ╭──── TETROMINO ─────╮ ╭─ NEXT ────────╮
-           │               │ │ · · · ·██ · · · · ·│ │               │
-           │   ████████    │ │ · · ·██████ · · · ·│ │        ██     │
-           │               │ │ · · · · · · · · · ·│ │    ██████     │
-           │               │ │ · · · · · · · · · ·│ │               │
-           ╰───────────────╯ │ · · · · · · · · · ·│ │     ████      │
-           ╭─ SCORE ───────╮ │ · · · · · · · · · ·│ │     ████      │
-           │        12,450 │ │ · · · · · · · · · ·│ │               │
-           │               │ │ · · · · · · · · · ·│ │      ████     │
-           │ LEVEL       2 │ │ · · · · · · · · · ·│ │    ████       │
-           │ LINES      17 │ │ · · · · · · · · · ·│ │               │
-           │               │ │ · · · · · · · · · ·│ │    ████       │
-           │ ━━━━━━━━━──── │ │ · · · · · · · · · ·│ │      ████     │
-           ╰───────────────╯ │ · · · · · · · · · ·│ │               │
-           ╭─ KEYS ────────╮ │ · · · · · · · · · ·│ │    ██         │
-           │ ← → move      │ │ · · · ·░░ · · · · ·│ │    ██████     │
-           │ ↑ x rotate    │ │ · · ·░░░░░░ · · · ·│ │               │
-           │ ↓   soft drop │ │██████████████ ·████│ ╰───────────────╯
-           │ spc hard drop │ │████████████ ·██████│
-           │ c   hold      │ │██████████ ·████████│
-           │ p   pause     │ │████████ ·██████████│
-           ╰───────────────╯ ╰────────────────────╯
-```
+![Tetromino demo: setup menu, stacking, hold, and a four-line clear](assets/demo.gif)
 
 ## Features
 
@@ -117,6 +94,10 @@ without warnings on GCC 16 and Clang.
 ctest --test-dir build --output-on-failure    # unit tests (engine + TUI helpers)
 python3 scripts/pty_check.py build/tetromino # terminal restoration on a real pty
 ```
+
+The README demo GIF is scripted: `scripts/make-demo.sh` records
+`assets/demo.tape` with [VHS](https://github.com/charmbracelet/vhs) (fixed
+seed, pre-planned moves) and encodes it with ffmpeg and gifsicle.
 
 `pty_check.py` runs the binary on a pseudo-terminal, drives it with keys and
 signals, and checks that the tty's termios settings afterwards are
