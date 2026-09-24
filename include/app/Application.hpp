@@ -13,7 +13,7 @@ class Logger;
 }
 
 namespace tetromino::tui {
-class Terminal;
+struct TerminalCapabilities;
 }
 
 namespace tetromino::app {
@@ -33,8 +33,8 @@ public:
     RunSummary run();
 
 private:
-    // Dark or light theme: from --theme, or by asking the terminal.
-    tui::Theme chooseTheme(tui::Terminal& terminal, tui::ColorMode colorMode);
+    // Dark or light theme: from --theme, or from what the terminal reported.
+    tui::Theme chooseTheme(const tui::TerminalCapabilities& caps, tui::ColorMode colorMode);
 
     const Options& options_;
     util::Logger& logger_;

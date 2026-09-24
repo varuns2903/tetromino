@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "core/Game.hpp"
+#include "tui/AutoRepeat.hpp"
 #include "tui/Input.hpp"
 #include "tui/Renderer.hpp"
 #include "tui/Terminal.hpp"
@@ -62,7 +63,7 @@ SetupNames namesOf(const core::Setup& setup) {
 
 }  // namespace
 
-tui::Theme Application::chooseTheme(tui::Terminal& terminal, tui::ColorMode colorMode) {
+tui::Theme Application::chooseTheme(const tui::TerminalCapabilities& caps, tui::ColorMode colorMode) {
     if (colorMode == tui::ColorMode::Monochrome) {
         return tui::Theme::monochrome();
     }
@@ -71,7 +72,7 @@ tui::Theme Application::chooseTheme(tui::Terminal& terminal, tui::ColorMode colo
     case ThemeChoice::Light: return tui::Theme::light();
     case ThemeChoice::Auto: break;
     }
-    if (const auto bg = terminal.queryBackground(std::chrono::milliseconds{300})) {
+    if (const auto& bg = caps.background) {
         const bool light = tui::isLight(*bg);
         logger_.info(std::format("terminal background rgb({}, {}, {}): {} theme", bg->r, bg->g, bg->b,
                                  light ? "light" : "dark"));
@@ -126,7 +127,19 @@ RunSummary Application::run() {
 
     tui::Terminal terminal;
     tui::Input input{terminal};
-    tui::Renderer renderer{chooseTheme(terminal, colorMode), colorMode};
+    const tui::TerminalCapabilities caps = terminal.probe(std::chrono::milliseconds{300});
+    tui::Renderer renderer{chooseTheme(caps, colorMode), colorMode};
+
+    // Terminals that report key releases get held-key movement timed by the
+    // game; others keep the OS key repeat.
+    const bool keyReleases = caps.keyReleaseEvents && !options_.legacyKeys;
+    if (keyReleases) {
+        terminal.enableKeyReleaseEvents();
+    }
+    logger_.info(std::format("key release events: {}", keyReleases ? "on" : "off"));
+    tui::AutoRepeat autoRepeat{{std::chrono::milliseconds{options_.dasMs}, std::chrono::milliseconds{options_.arrMs},
+                                std::chrono::milliseconds{options_.arrMs}}};
+    std::vector<core::Action> repeated;
 
     const auto resize = [&] {
         const tui::TerminalSize size = terminal.size();
@@ -185,7 +198,18 @@ RunSummary Application::run() {
 
         // 3. Input -> actions.
         for (const tui::KeyEvent& event : events) {
+            if (event.phase == tui::KeyPhase::Release) {
+                // Only used to stop held-key repeats; releases never act.
+                if (const auto action = tui::actionFor(event, core::GameMode::Playing)) {
+                    autoRepeat.release(*action);
+                }
+                continue;
+            }
+            if (event.phase == tui::KeyPhase::Repeat && game.mode() == core::GameMode::Playing) {
+                continue;  // the game times held keys itself (AutoRepeat)
+            }
             if (event.key == tui::Key::Suspend || event.key == tui::Key::FocusLost) {
+                autoRepeat.releaseAll();
                 if (game.mode() == core::GameMode::Playing || game.mode() == core::GameMode::Countdown) {
                     game.apply(core::Action::Pause);
                 }
@@ -202,8 +226,15 @@ RunSummary Application::run() {
                 if (*action == core::Action::Start || *action == core::Action::Restart) {
                     summary.played = true;
                 }
+                const bool wasPlaying = game.mode() == core::GameMode::Playing;
                 game.apply(*action);
+                if (keyReleases && wasPlaying) {
+                    autoRepeat.press(*action);  // ignores non-movement actions
+                }
             }
+        }
+        if (game.mode() != core::GameMode::Playing) {
+            autoRepeat.releaseAll();  // paused, menu, game over: nothing stays held
         }
 
         // 4. Asynchronous terminal events.
@@ -218,6 +249,13 @@ RunSummary Application::run() {
         const auto elapsed =
             simulating ? std::min<Clock::duration>(current - previous, kMaxStep) : Clock::duration::zero();
         previous = current;
+        if (keyReleases && game.mode() == core::GameMode::Playing) {
+            repeated.clear();
+            autoRepeat.update(std::chrono::duration_cast<core::Duration>(elapsed), repeated);
+            for (const core::Action action : repeated) {
+                game.apply(action);
+            }
+        }
         game.update(std::chrono::duration_cast<core::Duration>(elapsed));
 
         if (game.mode() != lastMode) {

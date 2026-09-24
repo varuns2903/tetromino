@@ -67,6 +67,15 @@ inline constexpr std::string_view kPopTitle = "\x1b[23;0t";
 inline constexpr std::string_view kQueryBackground = "\x1b]11;?\x1b\\";
 inline constexpr std::string_view kQueryDeviceAttributes = "\x1b[c";
 
+// Kitty keyboard protocol (https://sw.kovidgoyal.net/kitty/keyboard-protocol/).
+// Query: the terminal answers "CSI ? flags u" if it supports the protocol.
+// Push flags 1 (disambiguate) + 2 (report repeat/release) + 8 (report every
+// key as an escape code, so letters get release events too); pop restores
+// whatever was there before.
+inline constexpr std::string_view kQueryKeyboardFlags = "\x1b[?u";
+inline constexpr std::string_view kPushKeyboardFlags = "\x1b[>11u";
+inline constexpr std::string_view kPopKeyboardFlags = "\x1b[<u";
+
 // Everything needed to put the terminal back the way a shell expects it,
 // as a single constant so it can be written from a signal handler (no
 // allocation, one write()).

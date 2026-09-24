@@ -100,6 +100,15 @@ std::variant<Options, std::string> parseOptions(int argc, const char* const* arg
                 return std::string{"--difficulty expects one of: easy, normal, hard, expert"};
             }
             options.difficulty = *index;
+        } else if (name == "--das" || name == "--arr") {
+            const auto v = value();
+            const auto ms = v ? parseNumber<int>(*v) : std::nullopt;
+            if (!ms || *ms < 0 || *ms > 1000) {
+                return std::string{name} + " expects milliseconds between 0 and 1000";
+            }
+            (name == "--das" ? options.dasMs : options.arrMs) = *ms;
+        } else if (name == "--legacy-keys") {
+            options.legacyKeys = true;
         } else if (name == "--fps") {
             const auto v = value();
             const auto fps = v ? parseNumber<int>(*v) : std::nullopt;
@@ -159,6 +168,10 @@ Options:
   --color MODE     truecolor | 256 | 16 | mono   (default: auto-detect)
   --mono           same as --color mono
   --fps N          render rate, 10-240 (default 60)
+  --das MS         held-key delay before moves repeat (default 167)
+  --arr MS         time between repeated moves, 0 = instant (default 33)
+  --legacy-keys    use the OS key repeat even if the terminal reports
+                   key releases (kitty keyboard protocol)
   --debug          write a debug log to $XDG_STATE_HOME/tetromino/tetromino.log
   -h, --help       show this help
   -V, --version    show version

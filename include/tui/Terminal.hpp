@@ -19,12 +19,21 @@
 
 namespace tetromino::tui {
 
+// What the terminal told us about itself at startup.
+struct TerminalCapabilities {
+    std::optional<Rgb> background;  // OSC 11 reply, if any
+    bool keyReleaseEvents = false;  // kitty keyboard protocol supported
+};
+
 struct TerminalSize {
     int columns = 0;
     int rows = 0;
 
     friend constexpr bool operator==(TerminalSize, TerminalSize) = default;
 };
+
+// Interpret the replies to probe()'s queries (exposed for tests).
+[[nodiscard]] TerminalCapabilities parseCapabilities(std::string_view replies);
 
 class Terminal {
 public:
@@ -74,10 +83,15 @@ public:
     // without busy-waiting.
     bool waitForInput(std::chrono::milliseconds timeout);
 
-    // Ask the terminal for its background colour. Waits at most `timeout`,
-    // usually far less: the terminal's reply to a second, universally
-    // supported query ends the wait early. nullopt if it doesn't say.
-    [[nodiscard]] std::optional<Rgb> queryBackground(std::chrono::milliseconds timeout);
+    // Ask the terminal about itself (background colour, keyboard protocol)
+    // in one round-trip. Waits at most `timeout`, usually far less: the
+    // reply to a universally supported query marks the end of the answers.
+    [[nodiscard]] TerminalCapabilities probe(std::chrono::milliseconds timeout);
+
+    // Switch on key repeat/release reporting (kitty keyboard protocol).
+    // Only call if probe() said it's supported. Undone by restore(), and on
+    // crashes and suspend like the other modes.
+    void enableKeyReleaseEvents();
 
     // Read whatever bytes are available right now, without blocking.
     // Returns the number of bytes read (0 if none).
@@ -94,6 +108,7 @@ private:
     bool altScreen_ = false;
     bool cursorHidden_ = false;
     bool titlePushed_ = false;
+    bool keyboardPushed_ = false;
 };
 
 }  // namespace tetromino::tui

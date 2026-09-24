@@ -9,6 +9,7 @@
 #include "tui/Layout.hpp"
 #include "tui/PixelCanvas.hpp"
 #include "tui/Renderer.hpp"
+#include "tui/Terminal.hpp"
 #include "tui/ScreenBuffer.hpp"
 
 using namespace tetromino;
@@ -490,4 +491,14 @@ TEST(light_theme_has_light_well_and_dark_text) {
     CHECK(!tui::isLight(t.value().fg.value()));
     CHECK(!tui::isLight(t.overlay().fg.value()));
     CHECK(tui::isLight(t.overlay().bg.value()));
+}
+
+TEST(parses_probe_replies) {
+    const auto kitty = tui::parseCapabilities("\x1b]11;rgb:0000/0000/0000\x1b\\\x1b[?0u\x1b[?62;22c");
+    CHECK(kitty.keyReleaseEvents);
+    CHECK(kitty.background.has_value());
+    const auto plain = tui::parseCapabilities("\x1b[?1;2c");
+    CHECK(!plain.keyReleaseEvents);
+    CHECK(!plain.background.has_value());
+    CHECK(!tui::parseCapabilities("").keyReleaseEvents);
 }

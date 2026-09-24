@@ -2,6 +2,11 @@
 
 // Keyboard input: raw bytes -> key events.
 //
+// Besides the legacy encodings below, the decoder understands the kitty
+// keyboard protocol ("CSI code ; modifiers : event u", and arrows as
+// "CSI 1 ; modifiers : event A"), which the Terminal enables when the
+// terminal supports it.
+//
 // In raw mode the terminal hands us bytes, not keys. Printable keys are one
 // byte ('a' = 0x61), but special keys arrive as escape sequences:
 //
@@ -49,9 +54,16 @@ enum class Key : std::uint8_t {
     FocusLost,    // ESC [ O
 };
 
+// Legacy terminals only ever report presses (holding a key produces
+// repeated presses from the OS). Terminals speaking the kitty keyboard
+// protocol also report repeats and releases, which lets the game time
+// held keys itself.
+enum class KeyPhase : std::uint8_t { Press, Repeat, Release };
+
 struct KeyEvent {
     Key key = Key::Character;
     char ch = '\0';  // only meaningful for Key::Character
+    KeyPhase phase = KeyPhase::Press;
 
     friend constexpr bool operator==(const KeyEvent&, const KeyEvent&) = default;
 };

@@ -49,6 +49,76 @@ std::optional<KeyEvent> decodeSingleByte(char byte) {
     return std::nullopt;
 }
 
+// The numeric parameters of a CSI sequence that matter to us:
+// "first[:...] ; modifiers[:event] ; ..." (missing values default to 1).
+struct CsiParams {
+    int first = 1;
+    int modifiers = 1;  // 1 + bit flags: shift 1, alt 2, ctrl 4, ...
+    int event = 1;      // kitty: 1 press, 2 repeat, 3 release
+};
+
+CsiParams parseCsiParams(std::string_view params) {
+    CsiParams out;
+    int field = 0;
+    int subField = 0;
+    int value = -1;
+    const auto commit = [&] {
+        if (value < 0) {
+            return;
+        }
+        if (field == 0 && subField == 0) out.first = value;
+        if (field == 1 && subField == 0) out.modifiers = value;
+        if (field == 1 && subField == 1) out.event = value;
+    };
+    for (const char ch : params) {
+        if (ch >= '0' && ch <= '9') {
+            value = std::min((value < 0 ? 0 : value) * 10 + (ch - '0'), 1'000'000);
+        } else if (ch == ':') {
+            commit();
+            value = -1;
+            ++subField;
+        } else if (ch == ';') {
+            commit();
+            value = -1;
+            ++field;
+            subField = 0;
+        }
+    }
+    commit();
+    return out;
+}
+
+KeyPhase phaseFor(int event) {
+    switch (event) {
+    case 2: return KeyPhase::Repeat;
+    case 3: return KeyPhase::Release;
+    default: return KeyPhase::Press;
+    }
+}
+
+// Kitty "CSI code ; modifiers u": code is the Unicode code point of the key.
+std::optional<KeyEvent> decodeKittyKey(const CsiParams& p) {
+    const KeyPhase phase = phaseFor(p.event);
+    const bool ctrl = ((p.modifiers - 1) & 4) != 0;
+    const int code = p.first;
+    if (ctrl && (code == 'c' || code == 'C')) return KeyEvent{Key::Interrupt, '\0', phase};
+    if (ctrl && (code == 'z' || code == 'Z')) return KeyEvent{Key::Suspend, '\0', phase};
+    if (ctrl) return std::nullopt;
+    switch (code) {
+    case 27: return KeyEvent{Key::Escape, '\0', phase};
+    case 13: return KeyEvent{Key::Enter, '\0', phase};
+    case 9: return KeyEvent{Key::Tab, '\0', phase};
+    case 127:
+    case 8: return KeyEvent{Key::Backspace, '\0', phase};
+    case 32: return KeyEvent{Key::Space, '\0', phase};
+    default: break;
+    }
+    if (code > 32 && code < 127) {
+        return KeyEvent{Key::Character, static_cast<char>(code), phase};
+    }
+    return std::nullopt;  // function keys, modifiers on their own, ...
+}
+
 char lower(char c) { return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c; }
 
 }  // namespace
@@ -93,9 +163,15 @@ void InputDecoder::decode(std::vector<KeyEvent>& out) {
                 continue;
             }
             const char final = buffer_[j];
+            const CsiParams params = parseCsiParams(std::string_view{buffer_}.substr(i + 2, j - i - 2));
             if (auto arrow = arrowFor(final)) {
-                // Modifiers (e.g. ESC [ 1 ; 2 A for Shift+Up) are ignored.
-                out.push_back(KeyEvent{*arrow});
+                // Modifiers (e.g. ESC [ 1 ; 2 A for Shift+Up) are ignored;
+                // the kitty event type (ESC [ 1 ; 1 : 3 D = released) isn't.
+                out.push_back(KeyEvent{*arrow, '\0', phaseFor(params.event)});
+            } else if (final == 'u' && buffer_[i + 2] != '?') {
+                if (auto key = decodeKittyKey(params)) {
+                    out.push_back(*key);
+                }
             } else if (final == 'I' && j == i + 2) {
                 out.push_back(KeyEvent{Key::FocusGained});
             } else if (final == 'O' && j == i + 2) {

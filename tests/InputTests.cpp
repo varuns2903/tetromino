@@ -1,6 +1,7 @@
 #include <vector>
 
 #include "TestFramework.hpp"
+#include "tui/AutoRepeat.hpp"
 #include "tui/Input.hpp"
 
 using namespace tetromino;
@@ -125,4 +126,117 @@ TEST(keymap_other_modes) {
     CHECK(tui::actionFor({Key::Character, 'r'}, GameMode::Paused) == Action::Restart);
     CHECK(tui::actionFor({Key::Character, 'r'}, GameMode::GameOver) == Action::Restart);
     CHECK(!tui::actionFor({Key::Space}, GameMode::GameOver).has_value());
+}
+
+// --- Kitty keyboard protocol --------------------------------------------------
+
+TEST(kitty_press_repeat_release) {
+    const auto ev = decode("\x1b[97u\x1b[97;1:2u\x1b[97;1:3u");
+    CHECK_EQ(ev.size(), 3u);
+    CHECK(ev[0] == (KeyEvent{Key::Character, 'a', tui::KeyPhase::Press}));
+    CHECK(ev[1] == (KeyEvent{Key::Character, 'a', tui::KeyPhase::Repeat}));
+    CHECK(ev[2] == (KeyEvent{Key::Character, 'a', tui::KeyPhase::Release}));
+}
+
+TEST(kitty_arrows_with_event_types) {
+    const auto ev = decode("\x1b[D\x1b[1;1:2D\x1b[1;1:3D\x1b[1;1:3B");
+    CHECK_EQ(ev.size(), 4u);
+    CHECK(ev[0] == (KeyEvent{Key::Left, '\0', tui::KeyPhase::Press}));
+    CHECK(ev[1] == (KeyEvent{Key::Left, '\0', tui::KeyPhase::Repeat}));
+    CHECK(ev[2] == (KeyEvent{Key::Left, '\0', tui::KeyPhase::Release}));
+    CHECK(ev[3] == (KeyEvent{Key::Down, '\0', tui::KeyPhase::Release}));
+}
+
+TEST(kitty_special_keys_and_ctrl) {
+    const auto ev = decode("\x1b[27u\x1b[13u\x1b[32u\x1b[99;5u\x1b[122;5u\x1b[57441u");
+    CHECK(keysAre(ev, {Key::Escape, Key::Enter, Key::Space, Key::Interrupt, Key::Suspend}));  // lone Shift ignored
+}
+
+TEST(kitty_flags_reply_is_not_a_key) {
+    CHECK(decode("\x1b[?11u").empty());
+}
+
+// --- AutoRepeat -----------------------------------------------------------------
+
+namespace {
+
+using namespace std::chrono_literals;
+using tui::AutoRepeat;
+
+std::vector<Action> step(AutoRepeat& r, std::chrono::milliseconds dt) {
+    std::vector<Action> out;
+    r.update(dt, out);
+    return out;
+}
+
+}  // namespace
+
+TEST(no_repeat_before_the_delay) {
+    AutoRepeat r{{167ms, 33ms, 33ms}};
+    r.press(Action::MoveLeft);
+    CHECK(step(r, 160ms).empty());
+    CHECK_EQ(step(r, 10ms).size(), 1u);  // delay passed: first repeat
+}
+
+TEST(repeats_every_interval_after_the_delay) {
+    AutoRepeat r{{100ms, 20ms, 33ms}};
+    r.press(Action::MoveRight);
+    const auto moves = step(r, 200ms);  // 1 at 100 ms, then 5 more by 200 ms
+    CHECK_EQ(moves.size(), 6u);
+    for (const Action a : moves) {
+        CHECK(a == Action::MoveRight);
+    }
+}
+
+TEST(release_stops_repeating) {
+    AutoRepeat r;
+    r.press(Action::MoveLeft);
+    (void)step(r, 300ms);
+    r.release(Action::MoveLeft);
+    CHECK(step(r, 500ms).empty());
+    CHECK(!r.anyHeld());
+}
+
+TEST(last_pressed_direction_wins_and_hands_back) {
+    AutoRepeat r{{100ms, 50ms, 33ms}};
+    r.press(Action::MoveLeft);
+    (void)step(r, 50ms);
+    r.press(Action::MoveRight);
+    const auto a = step(r, 120ms);
+    CHECK(!a.empty());
+    CHECK(a.front() == Action::MoveRight);
+    r.release(Action::MoveRight);  // left is still held: it takes over after its delay
+    CHECK(step(r, 50ms).empty());
+    const auto b = step(r, 60ms);
+    CHECK(!b.empty());
+    CHECK(b.front() == Action::MoveLeft);
+}
+
+TEST(zero_interval_slides_to_the_wall) {
+    AutoRepeat r{{100ms, 0ms, 33ms}};
+    r.press(Action::MoveLeft);
+    CHECK(step(r, 100ms).size() >= 10u);
+}
+
+TEST(soft_drop_repeats_while_held) {
+    AutoRepeat r{{167ms, 33ms, 30ms}};
+    r.press(Action::SoftDrop);
+    CHECK_EQ(step(r, 95ms).size(), 3u);
+    r.release(Action::SoftDrop);
+    CHECK(step(r, 100ms).empty());
+}
+
+TEST(release_all_forgets_everything) {
+    AutoRepeat r;
+    r.press(Action::MoveLeft);
+    r.press(Action::SoftDrop);
+    r.releaseAll();
+    CHECK(!r.anyHeld());
+    CHECK(step(r, 1000ms).empty());
+}
+
+TEST(other_actions_are_not_tracked) {
+    AutoRepeat r;
+    r.press(Action::RotateClockwise);
+    CHECK(!r.anyHeld());
 }

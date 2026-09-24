@@ -79,6 +79,7 @@ add_library(tetromino_tui STATIC
     src/tui/Ansi.cpp
     src/tui/Terminal.cpp
     src/tui/Input.cpp
+    src/tui/AutoRepeat.cpp
     src/tui/Color.cpp
     src/tui/Theme.cpp
     src/tui/ScreenBuffer.cpp

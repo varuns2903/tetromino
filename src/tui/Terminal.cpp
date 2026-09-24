@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
@@ -68,6 +69,8 @@ std::atomic<bool> gResizePending{false};
 std::atomic<bool> gQuitRequested{false};
 // True while the tty is in our modified state and needs restoring.
 std::atomic<bool> gModified{false};
+// The kitty keyboard flags were pushed and must be popped.
+std::atomic<bool> gKeyboardPushed{false};
 
 termios gOriginalTermios{};
 termios gRawTermios{};
@@ -96,6 +99,9 @@ void writeAllRaw(std::string_view bytes) {
 
 void emergencyRestore() {
     if (gModified.load()) {
+        if (gKeyboardPushed.load()) {
+            writeAllRaw(ansi::kPopKeyboardFlags);
+        }
         ::tcsetattr(STDIN_FILENO, TCSAFLUSH, &gOriginalTermios);
         writeAllRaw(ansi::kRestoreAll);
     }
@@ -105,8 +111,29 @@ void reapplyGameMode() {
     if (gModified.load()) {
         ::tcsetattr(STDIN_FILENO, TCSAFLUSH, &gRawTermios);
         writeAllRaw(kEnterAll);
+        if (gKeyboardPushed.load()) {
+            writeAllRaw(ansi::kPushKeyboardFlags);
+        }
         gResizePending.store(true);
     }
+}
+
+// True if `replies` contains a complete "ESC [ ? <params> <final>" reply
+// with the given final byte (DA1 ends in 'c', keyboard flags in 'u').
+bool hasPrivateReply(std::string_view replies, char final) {
+    std::size_t pos = 0;
+    while ((pos = replies.find("\x1b[?", pos)) != std::string_view::npos) {
+        std::size_t end = pos + 3;
+        while (end < replies.size() && (std::isdigit(static_cast<unsigned char>(replies[end])) != 0 ||
+                                        replies[end] == ';')) {
+            ++end;
+        }
+        if (end < replies.size() && replies[end] == final) {
+            return true;
+        }
+        pos = end;
+    }
+    return false;
 }
 
 void setHandler(int sig, void (*handler)(int)) {
@@ -293,7 +320,20 @@ void Terminal::setTitle(std::string_view title) {
     write(out);
 }
 
+void Terminal::enableKeyReleaseEvents() {
+    if (!keyboardPushed_) {
+        write(ansi::kPushKeyboardFlags);
+        keyboardPushed_ = true;
+        gKeyboardPushed.store(true);
+    }
+}
+
 void Terminal::restore() {
+    if (keyboardPushed_) {
+        write(ansi::kPopKeyboardFlags);
+        keyboardPushed_ = false;
+        gKeyboardPushed.store(false);
+    }
     if (titlePushed_) {
         write(ansi::kPopTitle);
         titlePushed_ = false;
@@ -371,16 +411,24 @@ bool Terminal::waitForInput(std::chrono::milliseconds timeout) {
     return rc > 0;
 }
 
-std::optional<Rgb> Terminal::queryBackground(std::chrono::milliseconds timeout) {
+TerminalCapabilities parseCapabilities(std::string_view replies) {
+    TerminalCapabilities caps;
+    caps.background = parseBackgroundReply(replies);
+    caps.keyReleaseEvents = hasPrivateReply(replies, 'u');
+    return caps;
+}
+
+TerminalCapabilities Terminal::probe(std::chrono::milliseconds timeout) {
     std::string query;
     query += ansi::kQueryBackground;
+    query += ansi::kQueryKeyboardFlags;
     query += ansi::kQueryDeviceAttributes;
     if (!write(query)) {
-        return std::nullopt;
+        return {};
     }
 
     // Collect replies until the DA1 answer (ESC [ ? ... c) shows up, which
-    // every terminal sends after answering (or ignoring) the colour query.
+    // every terminal sends after answering (or ignoring) the other queries.
     std::string replies;
     std::array<char, 256> chunk{};
     const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -392,12 +440,11 @@ std::optional<Rgb> Terminal::queryBackground(std::chrono::milliseconds timeout) 
         }
         const std::size_t got = readAvailable(chunk);
         replies.append(chunk.data(), got);
-        const std::size_t da = replies.find("\x1b[?");
-        if (da != std::string::npos && replies.find('c', da) != std::string::npos) {
+        if (hasPrivateReply(replies, 'c')) {
             break;
         }
     }
-    return parseBackgroundReply(replies);
+    return parseCapabilities(replies);
 }
 
 std::size_t Terminal::readAvailable(std::span<char> buffer) {
