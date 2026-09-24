@@ -1,7 +1,7 @@
 # Maintainer: Varun S <04varuns at gmail dot com>
 
 pkgname=tetromino
-pkgver=1.0.1
+pkgver=1.1.0
 pkgrel=1
 pkgdesc='Falling-block puzzle game for the terminal, written from scratch in C++20 (termios + ANSI, no ncurses)'
 arch=('x86_64' 'aarch64')
@@ -10,7 +10,7 @@ license=('MIT')
 depends=('glibc' 'libgcc' 'libstdc++')
 makedepends=('cmake' 'ninja')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('a56117cfc0aeacc480565ff5a9a4dfed9e660416f24ac85fae0b64bfe1475ed8')
+sha256sums=('d585cd8d326b43333cb9613ec30b85fb87f6cfa6cc1e1f54c2ef7fe6a4d591e4')
 
 build() {
   # CMAKE_BUILD_TYPE=None: use makepkg's CXXFLAGS instead of the project's.
