@@ -77,6 +77,7 @@ private:
     void drawKeys(const core::GameState& state);
     void drawNext(const core::GameState& state);
     void drawMessage(const core::GameState& state);
+    void drawAttractBanner();
     void drawPauseOverlay();
     void drawCountdownOverlay(const core::GameState& state);
     void drawKeyHint(int x, int y, std::string_view key, std::string_view action);

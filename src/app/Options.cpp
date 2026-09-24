@@ -109,6 +109,8 @@ std::variant<Options, std::string> parseOptions(int argc, const char* const* arg
             (name == "--das" ? options.dasMs : options.arrMs) = *ms;
         } else if (name == "--legacy-keys") {
             options.legacyKeys = true;
+        } else if (name == "--no-demo") {
+            options.demo = false;
         } else if (name == "--fps") {
             const auto v = value();
             const auto fps = v ? parseNumber<int>(*v) : std::nullopt;
@@ -172,6 +174,7 @@ Options:
   --arr MS         time between repeated moves, 0 = instant (default 33)
   --legacy-keys    use the OS key repeat even if the terminal reports
                    key releases (kitty keyboard protocol)
+  --no-demo        don't start the demo when the menu is left idle
   --debug          write a debug log to $XDG_STATE_HOME/tetromino/tetromino.log
   -h, --help       show this help
   -V, --version    show version

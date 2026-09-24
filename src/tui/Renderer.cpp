@@ -399,7 +399,11 @@ void Renderer::drawPlayfield(const GameState& state) {
     drawStats(state);
     drawKeys(state);
     drawNext(state);
-    drawMessage(state);
+    if (hud_.attract) {
+        drawAttractBanner();
+    } else {
+        drawMessage(state);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -802,6 +806,17 @@ void Renderer::drawMessage(const GameState& state) {
     if (f.levelUp) {
         std::array<char, 32> text{};
         line(formatInto(text, "LEVEL {}", state.stats.level), headline);
+    }
+}
+
+void Renderer::drawAttractBanner() {
+    const Rect& r = layout_.message;
+    if (r.h < 2) {
+        return;
+    }
+    drawCentred(back_, r.x, r.w, r.y + 1, "DEMO", theme_.accent());
+    if (r.h >= 3) {
+        drawCentred(back_, r.x, r.w, r.y + 2, "press any key", theme_.muted());
     }
 }
 

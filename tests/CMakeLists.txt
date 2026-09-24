@@ -10,6 +10,7 @@ set(TETROMINO_ENGINE_TESTS
     ScoringTests
     PieceGeneratorTests
     GameTests
+    BotTests
 )
 
 set(TETROMINO_TUI_TESTS

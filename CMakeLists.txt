@@ -56,6 +56,7 @@ endif()
 # rule at the build level: tui/ headers are simply not on its include path.
 # ---------------------------------------------------------------------------
 add_library(tetromino_engine STATIC
+    src/core/Bot.cpp
     src/core/Game.cpp
     src/core/GameConfig.cpp
     src/core/Presets.cpp

@@ -26,6 +26,7 @@ struct Options {
     int dasMs = 167;                         // --das MS: delay before a held move repeats
     int arrMs = 33;                          // --arr MS: time between repeated moves (0 = instant)
     bool legacyKeys = false;                 // --legacy-keys: ignore key-release support
+    bool demo = true;                        // --no-demo: no attract mode on an idle menu
     bool debug = false;                      // --debug: write a log file
     bool showHelp = false;
     bool showVersion = false;

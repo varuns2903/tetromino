@@ -26,6 +26,7 @@
 #include <limits>
 #include <vector>
 
+#include "core/Bot.hpp"
 #include "core/Game.hpp"
 #include "tui/AutoRepeat.hpp"
 #include "tui/Input.hpp"
@@ -48,6 +49,13 @@ constexpr std::chrono::milliseconds kIdleWait{1000};
 // heavily loaded machine) we'd rather the game briefly slow down than have a
 // piece teleport and lock in one frame.
 constexpr std::chrono::milliseconds kMaxStep{100};
+
+// Attract mode: after this long on the menu without a key press, a demo game
+// played by the bot starts; it presses a key every kBotStep, and restarts
+// kDemoRestart after its game ends.
+constexpr std::chrono::seconds kAttractDelay{15};
+constexpr std::chrono::milliseconds kBotStep{110};
+constexpr std::chrono::seconds kDemoRestart{3};
 
 // The high-score key for a setup: preset names, not indices.
 struct SetupNames {
@@ -167,29 +175,40 @@ RunSummary Application::run() {
     tui::HudInfo hud;
     tui::HudInfo drawnHud;
 
+    std::optional<core::Game> demo;  // attract mode, when running
+    core::Bot bot;
+    auto lastKey = Clock::now();
+    Clock::duration botTimer{};
+    Clock::duration demoOverFor{};
+
     while (game.mode() != core::GameMode::Quit && !terminal.quitRequested()) {
+        // What's on screen: the demo while it runs, otherwise the real game.
+        const core::Game& shown = demo ? *demo : game;
+
         // 1. Render, only if something visible changed. This comes first so
         //    the result of the previous iteration is on screen before we
         //    (possibly) sleep.
-        hud.best = bestFor(game.state().setup);
+        hud.best = bestFor(shown.state().setup);
+        hud.attract = demo.has_value();
         if (game.mode() != core::GameMode::GameOver) {
             hud.newBest = false;
         }
-        if (forceRender || game.revision() != drawnRevision || hud != drawnHud) {
-            renderer.render(game.state(), hud);
+        if (forceRender || shown.revision() != drawnRevision || hud != drawnHud) {
+            renderer.render(shown.state(), hud);
             drawnHud = hud;
             if (!renderer.present(terminal)) {
                 logger_.error("terminal write failed; exiting");
                 break;
             }
-            drawnRevision = game.revision();
+            drawnRevision = shown.revision();
             forceRender = false;
         }
 
         // 2. Wait for input, a signal, or the next frame - whichever is first.
         //    When the game isn't running (menus, pause) there's no deadline;
         //    we sleep until a key or signal arrives.
-        const bool simulating = game.needsUpdates();
+        // (A demo keeps ticking even on its game-over screen, to restart.)
+        const bool simulating = demo.has_value() || shown.needsUpdates();
         const auto now = Clock::now();
         const auto wait = simulating
                               ? std::chrono::ceil<std::chrono::milliseconds>(std::max(nextFrame - now, Clock::duration::zero()))
@@ -198,6 +217,20 @@ RunSummary Application::run() {
 
         // 3. Input -> actions.
         for (const tui::KeyEvent& event : events) {
+            const bool keyPress = event.phase == tui::KeyPhase::Press && event.key != tui::Key::FocusGained &&
+                                  event.key != tui::Key::FocusLost;
+            if (keyPress) {
+                lastKey = Clock::now();
+            }
+            if (demo) {
+                // Any key ends the demo (and does nothing else).
+                if (keyPress) {
+                    demo.reset();
+                    forceRender = true;
+                    logger_.info("demo ended by key press");
+                }
+                continue;
+            }
             if (event.phase == tui::KeyPhase::Release) {
                 // Only used to stop held-key repeats; releases never act.
                 if (const auto action = tui::actionFor(event, core::GameMode::Playing)) {
@@ -237,6 +270,21 @@ RunSummary Application::run() {
             autoRepeat.releaseAll();  // paused, menu, game over: nothing stays held
         }
 
+        // Attract mode: start a demo once the menu has sat idle long enough,
+        // with the setup currently selected in the menu.
+        if (!demo && options_.demo && game.mode() == core::GameMode::StartScreen &&
+            Clock::now() - lastKey >= kAttractDelay) {
+            demo.emplace(util::Random::entropySeed(), config);
+            const core::Setup& s = game.state().setup;
+            demo->selectSetup(s.boardSize, s.difficulty, s.gameType);
+            demo->apply(core::Action::Start);
+            bot.reset();
+            botTimer = Clock::duration::zero();
+            demoOverFor = Clock::duration::zero();
+            forceRender = true;
+            logger_.info("demo started");
+        }
+
         // 4. Asynchronous terminal events.
         if (terminal.consumeResize()) {
             resize();
@@ -257,6 +305,26 @@ RunSummary Application::run() {
             }
         }
         game.update(std::chrono::duration_cast<core::Duration>(elapsed));
+
+        if (demo) {
+            // The bot presses one key per step, like a (fast) human.
+            botTimer += elapsed;
+            while (botTimer >= kBotStep) {
+                botTimer -= kBotStep;
+                if (const auto action = bot.nextAction(*demo)) {
+                    demo->apply(*action);
+                }
+            }
+            demo->update(std::chrono::duration_cast<core::Duration>(elapsed));
+            if (demo->mode() == core::GameMode::GameOver) {
+                demoOverFor += elapsed;
+                if (demoOverFor >= kDemoRestart) {
+                    demo->apply(core::Action::Restart);
+                    bot.reset();
+                    demoOverFor = Clock::duration::zero();
+                }
+            }
+        }
 
         if (game.mode() != lastMode) {
             logger_.info(std::format("mode {} -> {}", modeName(lastMode), modeName(game.mode())));
