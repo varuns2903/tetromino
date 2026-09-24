@@ -75,6 +75,7 @@ packages for **x86_64** and **aarch64 (arm64)**:
 | Any Linux distro | `tetromino-<version>-linux-<arch>.tar.gz` | unpack and run `./tetromino`; static binary, no dependencies |
 | Debian, Ubuntu, Mint, … | `tetromino_<version>_amd64.deb` / `_arm64.deb` | `sudo apt install ./tetromino_*.deb` |
 | Fedora, openSUSE, RHEL, … | `tetromino-<version>-1.x86_64.rpm` / `.aarch64.rpm` | `sudo dnf install ./tetromino-*.rpm` |
+| Homebrew (Linux) | [`varuns2903/tap`](https://github.com/varuns2903/homebrew-tap) | `brew install varuns2903/tap/tetromino` |
 | Arch Linux | [`packaging/aur`](packaging/aur) (`tetromino`, `tetromino-bin`) | `makepkg -si` in that directory (AUR submission pending) |
 
 Packages install the game to `/usr/bin/tetromino` along with a man page

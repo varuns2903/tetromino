@@ -8,6 +8,7 @@ taken from its section here.
 
 ### Added
 - Arch Linux packages (`tetromino`, `tetromino-bin`) in `packaging/aur`
+- Homebrew formula: `brew install varuns2903/tap/tetromino`
 
 ### Changed
 - Release binaries are static-PIE with full RELRO (address-space layout
