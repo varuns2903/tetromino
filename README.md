@@ -185,14 +185,14 @@ These are the layers, and the build enforces the arrows:
 ```
                 ┌─────────────────────────────────────────┐
                 │ app/        Application: the main loop  │
-                └───────┬───────────────────────┬─────────┘
-                        │                       │
-        ┌───────────────▼──────────┐   ┌────────▼────────────────────────┐
-        │ tui/  (libtetromino_tui)    │   │ core/ + game/  (libtetromino_engine)│
-        │ Terminal  Input          │──▶│ Game ──▶ GameState               │
-        │ Renderer  ScreenBuffer   │   │ Board Piece Rotation Collision   │
-        │ Ansi Color Theme Layout  │   │ PieceGenerator Scoring           │
-        └──────────────────────────┘   └──────────────────────────────────┘
+                └───────┬────────────────────────┬────────┘
+                        │                        │
+        ┌───────────────▼──────────┐    ┌────────▼────────────────────────────┐
+        │ tui/  (libtetromino_tui) │    │ core/ + game/  (libtetromino_engine)│
+        │ Terminal  Input          │──▶│ Game ──▶ GameState                 │
+        │ Renderer  ScreenBuffer   │    │ Board Piece Rotation Collision      │
+        │ Ansi Color Theme Layout  │    │ PieceGenerator Scoring              │
+        └──────────────────────────┘    └─────────────────────────────────────┘
              knows about terminals          knows nothing about terminals
 ```
 
